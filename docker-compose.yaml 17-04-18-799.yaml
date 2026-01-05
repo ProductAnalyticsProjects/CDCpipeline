@@ -1,7 +1,7 @@
 services:
   postegres:
     image: postgres:16
-    container_name: postgres
+    container_name: postregres_bioparrco
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
