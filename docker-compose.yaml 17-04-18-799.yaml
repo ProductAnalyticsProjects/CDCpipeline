@@ -5,20 +5,20 @@ services:
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
-      - POSTGRES_DB = invetory
+      - POSTGRES_DB=invetory
     ports:
       - "1900:5432"
     command: ["postgres","-c", "wal_level=logic"]
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:3.8.x
+    image: confluentinc/cp-zookeeper:7.6.1
     container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: confluentinc/cp-kafka:4.1
+    image: confluentinc/cp-kafka:7.6.1
     container_name: kafka
     depends_on:
       - zookeeper
