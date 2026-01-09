@@ -1,0 +1,6 @@
+spark_apps/cdc_dump.json
+spark_apps/esercizio_a.py
+spark_apps/esercizio_b.py
+spark_apps/utenti.json
+.venv
+.env
