@@ -16,7 +16,7 @@ order_schema = StructType([
 raw_df = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "kafka:29092") \
-    .option("subscribe", "inventory.puclic.orders") \
+    .option("subscribe", "inventory.public.orders") \
     .load()
 
 query = raw_df.selectExpr("CAST(value AS STRING) as json_str") \
