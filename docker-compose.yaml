@@ -94,6 +94,7 @@ services:
     volumes:
       - ./spark_apps:/opt/bitnami/spark/apps # Cartella per i tuoi script Python
       - ./data/spark_master:/bitnami/spark
+      - ./spark_checkpoints:/mnt/spark_checkpoints
 
   spark-worker:
     image: bitnami/spark
