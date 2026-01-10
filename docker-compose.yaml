@@ -68,7 +68,7 @@ services:
       - "5050:80"
     depends_on:
       - postgres
-  
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui

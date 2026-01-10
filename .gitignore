@@ -4,3 +4,4 @@ spark_apps/esercizio_b.py
 spark_apps/utenti.json
 .venv
 .env
+data
