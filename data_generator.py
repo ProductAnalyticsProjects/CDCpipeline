@@ -80,6 +80,7 @@ def activity():
                     delete_order = session.query(Ordini).get(
                         random.randint(1, next_num - 1)
                     )
+                    print(f"Delete ordine {Ordini.order_number}")
                     session.delete(delete_order)
                     session.commit()
 
