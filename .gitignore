@@ -6,3 +6,5 @@ spark_apps/utenti.json
 .env
 data
 .idea
+e-commerce/backend/.gradle
+e-commerce/backend/build
