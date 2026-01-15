@@ -17,8 +17,10 @@ spring:
 
   flyway:
     enabled: true
+    url: jdbc:postgresql://localhost:1900/ecommerce
+    user: user
+    password: password
     locations: classpath:db/migration
-    baseline-on-migrate: true
 
 server:
   port: 8080

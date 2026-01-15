@@ -11,6 +11,7 @@ services:
     command: ["postgres","-c", "wal_level=logical"]
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
 
 
   zookeeper:
