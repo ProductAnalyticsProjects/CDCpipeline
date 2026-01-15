@@ -5,3 +5,4 @@ spark_apps/utenti.json
 .venv
 .env
 data
+.idea
