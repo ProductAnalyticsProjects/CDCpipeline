@@ -81,7 +81,7 @@ services:
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
 
   spark-master:
-    image: bitnami/spark
+    image: bitnamilegacy/spark:3.5.1
     container_name: spark-master
     environment:
       - SPARK_MODE=master
@@ -98,7 +98,7 @@ services:
       - ./spark_checkpoints:/mnt/spark_checkpoints
 
   spark-worker:
-    image: bitnami/spark
+    image: bitnamilegacy/spark:3.5.1
     container_name: spark-worker
     depends_on:
       - spark-master
