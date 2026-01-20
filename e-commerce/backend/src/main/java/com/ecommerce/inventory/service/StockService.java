@@ -70,18 +70,21 @@ public class StockService {
         Stock stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId).orElseThrow(() ->
                 new ResourceNotFoundException("Stock", productId + "-" + warehouseId));
         stock.reserve(quantity);
+        stockRepository.save(stock);
     }
 
     public void release(UUID productId, UUID warehouseId, int quantity) {
         Stock stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId).orElseThrow(() ->
                 new ResourceNotFoundException("Stock", productId + "-" + warehouseId));
         stock.releaseReservation(quantity);
+        stockRepository.save(stock);
     }
 
     public void confirm(UUID productId, UUID warehouseId, int quantity) {
         Stock stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId).orElseThrow(() ->
                 new ResourceNotFoundException("Stock", productId + "-" + warehouseId));
         stock.confirmReservation(quantity);
+        stockRepository.save(stock);
     }
 
     private Stock createNewStock(UUID productId, UUID warehouseId) {
