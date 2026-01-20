@@ -15,16 +15,18 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(AbstractHttpConfigurer::disable)
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                // Actuator endpoints
-                .requestMatchers("/actuator/**").permitAll()
-                // API v1 - per ora tutto aperto, poi aggiungiamo auth
-                .requestMatchers("/v1/**").permitAll()
-                .anyRequest().authenticated()
-            );
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        // Swagger UI
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+                        // Actuator endpoints
+                        .requestMatchers("/actuator/**").permitAll()
+                        // API v1 - per ora tutto aperto, poi aggiungiamo auth
+                        .requestMatchers("/v1/**").permitAll()
+                        .anyRequest().authenticated()
+                );
 
         return http.build();
     }
