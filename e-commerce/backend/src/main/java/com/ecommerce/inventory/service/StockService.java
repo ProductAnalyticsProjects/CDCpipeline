@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -29,24 +30,28 @@ public class StockService {
     private final WarehouseRepository warehouseRepository;
     private final ProductRepository productRepository;
 
-
+    @Transactional(readOnly = true)
     public Page<StockDto> findAll(Pageable pageable) {
         return stockRepository.findAll(pageable).map(stockMapper::toDto);
     }
 
+    @Transactional(readOnly = true)
     public List<StockDto> findByProductId(UUID productId) {
         return stockRepository.findByProductId(productId).stream().map(stockMapper::toDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<StockDto> findLowStock(int threshold) {
         return stockRepository.findLowStock(threshold).stream().map(stockMapper::toDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public boolean checkAvailability(UUID productId, int quantity) {
         int available = stockRepository.getTotalAvailableQuantity(productId);
         return available >= quantity;
     }
 
+    @Transactional
     public StockDto addStock(StockAddRequest request) {
 
         Stock stock =
@@ -58,6 +63,7 @@ public class StockService {
         return stockMapper.toDto(stock);
     }
 
+    @Transactional
     public StockDto setStock(UUID productId, UUID warehouseId, int quantity) {
         Stock stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId).orElseThrow(() ->
                 new ResourceNotFoundException("Stock", productId + "-" + warehouseId));
@@ -66,6 +72,7 @@ public class StockService {
         return stockMapper.toDto(stock);
     }
 
+    @Transactional
     public void reserve(UUID productId, UUID warehouseId, int quantity) {
         Stock stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId).orElseThrow(() ->
                 new ResourceNotFoundException("Stock", productId + "-" + warehouseId));
@@ -73,6 +80,7 @@ public class StockService {
         stockRepository.save(stock);
     }
 
+    @Transactional
     public void release(UUID productId, UUID warehouseId, int quantity) {
         Stock stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId).orElseThrow(() ->
                 new ResourceNotFoundException("Stock", productId + "-" + warehouseId));
@@ -80,6 +88,7 @@ public class StockService {
         stockRepository.save(stock);
     }
 
+    @Transactional
     public void confirm(UUID productId, UUID warehouseId, int quantity) {
         Stock stock = stockRepository.findByProductIdAndWarehouseId(productId, warehouseId).orElseThrow(() ->
                 new ResourceNotFoundException("Stock", productId + "-" + warehouseId));
