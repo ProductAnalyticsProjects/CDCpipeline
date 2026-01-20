@@ -114,3 +114,19 @@ services:
     volumes:
       - ./spark_apps:/opt/bitnami/spark/apps
       - ./data/spark_worker:/bitnami/spark
+
+  ecommerce-backend:
+    build:
+      context: ./e-commerce/backend
+      dockerfile: Dockerfile
+    container_name: ecommerce-backend
+    depends_on:
+      - postgres
+    ports:
+      - "8085:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommerce
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=password
+    restart: unless-stopped
