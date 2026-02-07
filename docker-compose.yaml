@@ -149,11 +149,16 @@ services:
       - |
         if [ ! -f "dbt_project.yml" ]; then
           echo "Progetto non trovato. Inizializzazione in corso..."
-          # --skip-profiles evita che dbt cerchi di creare un profilo interattivo
-          dbt init my_dbt_project --skip-profile-setup
+          # 1. Crea il progetto in una cartella temporanea chiamata 'temp_db'
+          dbt init temp_dbt --skip-profile-setup
+          # 2. Sposta tutti i file nella cartella corrente (/usr/app)
+          mv temp_dbt/* .
+          mv temp_dbt/.gitignore .
+          # 3. Rimuove la cartella temporanea ormai vuota
+          rm -rf temp_dbt
+          echo "Inizializzazione completata con successo!"
         else
           echo "Progetto già esistente. Salto l'inizializzazione."
         fi
-      depends_on:
         - postgres
       profiles: [ "tools" ] # Opzionale: per non avviarlo sempre con 'up'
