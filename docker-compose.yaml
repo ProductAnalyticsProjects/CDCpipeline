@@ -136,29 +136,11 @@ services:
       container_name: dbt_transform
       volumes:
         - ./dbt_project:/usr/app # I tuoi modelli, macro e profili dbt
-        - ~/.dbt:/root/.dbt      # Se vuoi tenere i profili fuori dal progetto
       environment:
+        - DBT_PROFILES_DIR=/usr/app
         - DBT_POSTGRES_HOST=postgres
         - DBT_POSTGRES_USER=user
         - DBT_POSTGRES_PW=password
         - DBT_POSTGRES_DB=inventory
         - DBT_POSTGRES_SCHEMA=public
-      entrypoint: "/bin/sh"
-      command: 
-      - -c
-      - |
-        if [ ! -f "dbt_project.yml" ]; then
-          echo "Progetto non trovato. Inizializzazione in corso..."
-          # 1. Crea il progetto in una cartella temporanea chiamata 'temp_db'
-          dbt init temp_dbt --skip-profile-setup
-          # 2. Sposta tutti i file nella cartella corrente (/usr/app)
-          mv temp_dbt/* .
-          mv temp_dbt/.gitignore .
-          # 3. Rimuove la cartella temporanea ormai vuota
-          rm -rf temp_dbt
-          echo "Inizializzazione completata con successo!"
-        else
-          echo "Progetto già esistente. Salto l'inizializzazione."
-        fi
-        - postgres
       profiles: [ "tools" ] # Opzionale: per non avviarlo sempre con 'up'
