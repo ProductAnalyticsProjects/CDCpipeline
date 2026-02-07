@@ -130,3 +130,30 @@ services:
       - SPRING_DATASOURCE_USERNAME=user
       - SPRING_DATASOURCE_PASSWORD=password
     restart: unless-stopped
+
+  dbt:
+      image: ghcr.io/dbt-labs/dbt-postgres:1.7.0 # Usa l'immagine ufficiale per Postgres
+      container_name: dbt_transform
+      volumes:
+        - ./dbt_project:/usr/app # I tuoi modelli, macro e profili dbt
+        - ~/.dbt:/root/.dbt      # Se vuoi tenere i profili fuori dal progetto
+      environment:
+        - DBT_POSTGRES_HOST=postgres
+        - DBT_POSTGRES_USER=user
+        - DBT_POSTGRES_PW=password
+        - DBT_POSTGRES_DB=inventory
+        - DBT_POSTGRES_SCHEMA=public
+      entrypoint: "/bin/sh"
+      command: 
+      - -c
+      - |
+        if [ ! -f "dbt_project.yml" ]; then
+          echo "Progetto non trovato. Inizializzazione in corso..."
+          # --skip-profiles evita che dbt cerchi di creare un profilo interattivo
+          dbt init my_dbt_project --skip-profile-setup
+        else
+          echo "Progetto già esistente. Salto l'inizializzazione."
+        fi
+      depends_on:
+        - postgres
+      profiles: [ "tools" ] # Opzionale: per non avviarlo sempre con 'up'
