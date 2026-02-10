@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/v1/product")
+@RequestMapping("/v1/products")
 @RequiredArgsConstructor
 @SuppressWarnings("NullableProblems")
 @Slf4j
