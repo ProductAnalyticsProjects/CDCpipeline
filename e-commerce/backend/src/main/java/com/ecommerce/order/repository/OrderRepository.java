@@ -21,6 +21,8 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     Page<Order> findByStatus(OrderStatus status, Pageable pageable);
 
+    Page<Order> findByCustomerEmailAndStatus(String customerEmail, OrderStatus status, Pageable pageable);
+
     @Query("SELECT o FROM Order o WHERE o.status = :status AND o.createdAt < :beforeDate")
     List<Order> findByStatusAndCreatedAtBefore(
         @Param("status") OrderStatus status,

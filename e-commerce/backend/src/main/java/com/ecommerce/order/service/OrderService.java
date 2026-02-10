@@ -17,6 +17,8 @@ import com.ecommerce.product.repository.ProductRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,27 @@ public class OrderService {
     private final OrderMapper orderMapper;
     private final ProductRepository productRepository;
     private final StockService stockService;
+
+
+    @Transactional(readOnly = true)
+    public Page<OrderDto> findAll(Pageable pageable) {
+        return orderRepository.findAll(pageable).map(orderMapper::toOrderDto);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<OrderDto> findByCustomerMail(String customerEmail, Pageable pageable) {
+        return orderRepository.findByCustomerEmail(customerEmail, pageable).map(orderMapper::toOrderDto);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<OrderDto> findByStatus(OrderStatus status, Pageable pageable) {
+        return orderRepository.findByStatus(status, pageable).map(orderMapper::toOrderDto);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<OrderDto> findByCustomerEmailAndStatus(String customerEmail, OrderStatus status, Pageable pageable) {
+        return orderRepository.findByCustomerEmailAndStatus(customerEmail, status, pageable).map(orderMapper::toOrderDto);
+    }
 
     @Transactional
     public OrderDto createOrder(CreateOrderRequest request) {

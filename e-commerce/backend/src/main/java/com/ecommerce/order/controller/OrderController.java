@@ -1,12 +1,17 @@
 package com.ecommerce.order.controller;
 
 
+import com.ecommerce.order.domain.OrderStatus;
 import com.ecommerce.order.dto.CreateOrderRequest;
 import com.ecommerce.order.dto.OrderDto;
 import com.ecommerce.order.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +25,23 @@ import java.util.UUID;
 @Slf4j
 public class OrderController {
     private final OrderService orderService;
+
+    @GetMapping
+    public ResponseEntity<Page<OrderDto>>getAllOrders(
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            @RequestParam(required = false) String customerEmail,
+            @RequestParam(required = false) OrderStatus status
+    ) {
+        if (customerEmail != null && status != null) {
+            return ResponseEntity.ok(orderService.findByCustomerEmailAndStatus(customerEmail, status, pageable));
+        } else if (customerEmail != null) {
+            return ResponseEntity.ok(orderService.findByCustomerMail(customerEmail, pageable));
+        } else if (status != null) {
+            return ResponseEntity.ok(orderService.findByStatus(status, pageable));
+        } else {
+            return ResponseEntity.ok(orderService.findAll(pageable));
+        }
+    }
 
     @PostMapping
     public ResponseEntity<OrderDto> createOrder(@Valid @RequestBody CreateOrderRequest request) {
