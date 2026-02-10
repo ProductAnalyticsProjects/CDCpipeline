@@ -76,6 +76,16 @@ CREATE TABLE order_items (
 CREATE INDEX idx_order_items_order ON order_items(order_id);
 CREATE INDEX idx_order_items_product ON order_items(product_id);
 
+-- User table
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(60) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'CUSTOMER',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Insert default warehouse for Phase 1
 INSERT INTO warehouses (id, name, address, is_active)
 VALUES ('00000000-0000-0000-0000-000000000001', 'Main Warehouse', 'Default Location', true);
