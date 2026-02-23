@@ -14,6 +14,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -27,6 +29,7 @@ public class OrderController {
     private final OrderService orderService;
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<OrderDto>>getAllOrders(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
             @RequestParam(required = false) String customerEmail,
@@ -41,6 +44,12 @@ public class OrderController {
         } else {
             return ResponseEntity.ok(orderService.findAll(pageable));
         }
+    }
+
+    @GetMapping("/my")
+    public ResponseEntity<Page<OrderDto>> getMyOrders(@PageableDefault(size = 20, sort = "createdAt", direction =
+            Sort.Direction.DESC) Pageable pageable, @AuthenticationPrincipal String customerEmail) {
+        return ResponseEntity.ok(orderService.findByCustomerMail(customerEmail, pageable));
     }
 
     @PostMapping

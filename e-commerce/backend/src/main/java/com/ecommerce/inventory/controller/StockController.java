@@ -12,6 +12,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -49,11 +50,13 @@ public class StockController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<StockDto> addStock(@Valid @RequestBody StockAddRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(stockService.addStock(request));
     }
 
     @PutMapping("/{productId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<StockDto> setStock(@PathVariable UUID productId,
                                              @RequestParam UUID warehouseId, @RequestParam int quantity) {
         return ResponseEntity.ok(stockService.setStock(productId, warehouseId, quantity));

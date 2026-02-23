@@ -23,6 +23,10 @@ GET http://localhost:8080/api/v1/products
 GET http://localhost:8080/api/v1/products
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwicm9sZSI6IkNVU1RPTUVSIiwiZW1haWwiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzcxODU2NDg1LCJleHAiOjE3NzE5NDI4ODV9.IWPpes2mXUqLxkor-zyWdaA3FWXrFCCVpJgQQEFIuRc
 
+###
+GET http://localhost:8080/api/v1/orders/my
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwicm9sZSI6IkNVU1RPTUVSIiwiZW1haWwiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzcxODU2NDg1LCJleHAiOjE3NzE5NDI4ODV9.IWPpes2mXUqLxkor-zyWdaA3FWXrFCCVpJgQQEFIuRc
+
 
 ### 8085 port calls
 ### Register
@@ -49,3 +53,5 @@ GET http://localhost:8085/api/v1/products
 ### Get products (con token)
 GET http://localhost:8085/api/v1/products
 Authorization: Bearer <TOKEN>
+
+
