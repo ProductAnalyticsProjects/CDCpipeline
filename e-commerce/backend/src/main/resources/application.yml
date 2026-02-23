@@ -33,3 +33,7 @@ app:
     reservation-timeout-minutes: 15
   order:
     max-items-per-order: 50
+
+  jwt:
+    secret: mySecretKeyThatIsAtLeast32CharactersLong
+    expirationMs: 86400000  # 24 ore

@@ -1,0 +1,51 @@
+### Register
+POST http://localhost:8080/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "password": "password123"
+}
+
+### Login
+POST http://localhost:8080/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "password": "password123"
+}
+
+### Get products (senza token - deve fallire)
+GET http://localhost:8080/api/v1/products
+
+### Get products (con token)
+GET http://localhost:8080/api/v1/products
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwicm9sZSI6IkNVU1RPTUVSIiwiZW1haWwiOiJ0ZXN0QHRlc3QuY29tIiwiaWF0IjoxNzcxODU2NDg1LCJleHAiOjE3NzE5NDI4ODV9.IWPpes2mXUqLxkor-zyWdaA3FWXrFCCVpJgQQEFIuRc
+
+
+### 8085 port calls
+### Register
+POST http://localhost:8085/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "password": "password123"
+}
+
+### Login
+POST http://localhost:8085/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "password": "password123"
+}
+
+### Get products (senza token - deve fallire)
+GET http://localhost:8085/api/v1/products
+
+### Get products (con token)
+GET http://localhost:8085/api/v1/products
+Authorization: Bearer <TOKEN>

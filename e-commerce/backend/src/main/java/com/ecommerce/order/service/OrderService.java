@@ -27,6 +27,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@SuppressWarnings("NullableProblems")
 public class OrderService {
     private final static UUID defaultWarehouseId = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private final OrderRepository orderRepository;
