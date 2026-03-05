@@ -3,6 +3,8 @@ package com.ecommerce.order.service;
 
 import com.ecommerce.common.exception.BusinessException;
 import com.ecommerce.common.exception.ResourceNotFoundException;
+import com.ecommerce.common.metrics.MetricsService;
+import com.ecommerce.inventory.dto.StockAddRequest;
 import com.ecommerce.inventory.service.StockService;
 import com.ecommerce.order.domain.Order;
 import com.ecommerce.order.domain.OrderItem;
@@ -17,11 +19,14 @@ import com.ecommerce.product.repository.ProductRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -29,11 +34,12 @@ import java.util.UUID;
 @Slf4j
 @SuppressWarnings("NullableProblems")
 public class OrderService {
-    private final static UUID defaultWarehouseId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    @Value( "${app.inventory.default-warehouse-id}") UUID  defaultWarehouseId;
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
     private final ProductRepository productRepository;
     private final StockService stockService;
+    private final MetricsService metricsService;
 
 
     @Transactional(readOnly = true)
@@ -50,6 +56,13 @@ public class OrderService {
     public Page<OrderDto> findByStatus(OrderStatus status, Pageable pageable) {
         return orderRepository.findByStatus(status, pageable).map(orderMapper::toOrderDto);
     }
+
+    @Transactional(readOnly = true)
+    public List<OrderDto> findByStatusAndCreatedAtBefore(OrderStatus status, OffsetDateTime before) {
+        return orderRepository.findByStatusAndCreatedAtBefore(status, before).stream().map(orderMapper::toOrderDto).toList();
+    }
+
+
 
     @Transactional(readOnly = true)
     public Page<OrderDto> findByCustomerEmailAndStatus(String customerEmail, OrderStatus status, Pageable pageable) {
@@ -69,6 +82,7 @@ public class OrderService {
                         "Not enough stock for product: " + i.productId());
             }
             stockService.reserve(i.productId(), defaultWarehouseId, i.quantity());
+            metricsService.incrementStockReservations();
             OrderItem item = new OrderItem();
             item.setProduct(product);
             item.setQuantity(i.quantity());
@@ -80,6 +94,7 @@ public class OrderService {
         }
         order.recalculateTotal();
         orderRepository.save(order);
+        metricsService.incrementOrdersCreated();
         return orderMapper.toOrderDto(order);
 
     }
@@ -106,6 +121,27 @@ public class OrderService {
             }
         } else {
             throw new BusinessException("Order cannot be cancelled");
+        }
+        metricsService.incrementOrdersCancelled();
+        orderRepository.save(orderEntity);
+    }
+
+    @Transactional
+    public void refundOrder(UUID orderId) {
+        var orderEntity = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order", orderId));
+
+        if (!orderEntity.canTransitionTo(OrderStatus.REFUNDED)) {
+            throw new BusinessException("INVALID_ORDER_STATUS", "Order cannot be refunded");
+        }
+
+        orderEntity.setStatus(OrderStatus.REFUNDED);
+        for (OrderItem item : orderEntity.getItems()) {
+            stockService.addStock(new StockAddRequest(
+                    item.getProduct().getId(),
+                    defaultWarehouseId,
+                    item.getQuantity()
+            ));
         }
         orderRepository.save(orderEntity);
     }

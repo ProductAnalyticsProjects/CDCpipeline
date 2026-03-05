@@ -31,9 +31,19 @@ server:
 app:
   inventory:
     reservation-timeout-minutes: 15
+    default-warehouse-id: 00000000-0000-0000-0000-000000000001
   order:
     max-items-per-order: 50
 
   jwt:
     secret: mySecretKeyThatIsAtLeast32CharactersLong
     expirationMs: 86400000  # 24 ore
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    prometheus:
+      enabled: true

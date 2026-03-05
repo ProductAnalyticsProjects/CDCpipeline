@@ -80,6 +80,12 @@ public class OrderController {
         return ResponseEntity.ok(orderService.getOrderById(id));
     }
 
+    @PostMapping("/{id}/refund")
+    public ResponseEntity<OrderDto> refundOrder(@PathVariable UUID id) {
+        orderService.refundOrder(id);
+        return ResponseEntity.ok(orderService.getOrderById(id));
+    }
+
     @PostMapping("/{id}/ship")
     public ResponseEntity<OrderDto> shipOrder(@PathVariable UUID id) {
         orderService.shipOrder(id);

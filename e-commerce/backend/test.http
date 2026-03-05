@@ -29,13 +29,15 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0QHRlc3QuY29tIiwicm9sZ
 
 
 ### 8085 port calls
+
+
 ### Register
 POST http://localhost:8085/api/v1/auth/register
 Content-Type: application/json
 
 {
-  "email": "test@test.com",
-  "password": "password123"
+  "email": "admin@admin.com",
+  "password": "admin123"
 }
 
 ### Login
@@ -43,8 +45,8 @@ POST http://localhost:8085/api/v1/auth/login
 Content-Type: application/json
 
 {
-  "email": "test@test.com",
-  "password": "password123"
+  "email": "admin@admin.com",
+  "password": "admin123"
 }
 
 ### Get products (senza token - deve fallire)
@@ -52,6 +54,64 @@ GET http://localhost:8085/api/v1/products
 
 ### Get products (con token)
 GET http://localhost:8085/api/v1/products
-Authorization: Bearer <TOKEN>
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBhZG1pbi5jb20iLCJyb2xlIjoiQURNSU4iLCJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImlhdCI6MTc3MjcxNjM5NywiZXhwIjoxNzcyODAyNzk3fQ.1Guk1NCsdmqnr3ZmNjNmaUXGncznuV-avaby8DcINvQ
+
+### Create Product (usa token dal login)
+POST http://localhost:8085/api/v1/products
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBhZG1pbi5jb20iLCJyb2xlIjoiQURNSU4iLCJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImlhdCI6MTc3MjcxNjM5NywiZXhwIjoxNzcyODAyNzk3fQ.1Guk1NCsdmqnr3ZmNjNmaUXGncznuV-avaby8DcINvQ
+
+{
+  "name": "iPhone 15",
+  "description": "Apple smartphone",
+  "basePrice": 999.99,
+  "sku": "IPHONE-15-001"
+}
+
+### Add Stock (usa productId dalla risposta precedente)
+POST http://localhost:8085/api/v1/inventory
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBhZG1pbi5jb20iLCJyb2xlIjoiQURNSU4iLCJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImlhdCI6MTc3MjcxNjM5NywiZXhwIjoxNzcyODAyNzk3fQ.1Guk1NCsdmqnr3ZmNjNmaUXGncznuV-avaby8DcINvQ
+
+{
+  "productId": "d9c22725-5a9e-473d-8ed8-e62a55205a17",
+  "warehouseId": "00000000-0000-0000-0000-000000000001",
+  "quantity": 100
+}
+
+### Create Order
+POST http://localhost:8085/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBhZG1pbi5jb20iLCJyb2xlIjoiQURNSU4iLCJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImlhdCI6MTc3MjcxNjM5NywiZXhwIjoxNzcyODAyNzk3fQ.1Guk1NCsdmqnr3ZmNjNmaUXGncznuV-avaby8DcINvQ
+
+{
+  "customerEmail": "admin@admin.com",
+  "items": [
+    {
+      "productId": "d9c22725-5a9e-473d-8ed8-e62a55205a17",
+      "quantity": 2
+    }
+  ],
+  "notes": "Test order"
+}
+
+### Create Another Order
+POST http://localhost:8085/api/v1/orders
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBhZG1pbi5jb20iLCJyb2xlIjoiQURNSU4iLCJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImlhdCI6MTc3MjcxNjM5NywiZXhwIjoxNzcyODAyNzk3fQ.1Guk1NCsdmqnr3ZmNjNmaUXGncznuV-avaby8DcINvQ
+
+{
+  "customerEmail": "admin@test.com",
+  "items": [
+    {
+      "productId": "d9c22725-5a9e-473d-8ed8-e62a55205a17",
+      "quantity": 1
+    }
+  ]
+}
+
+### Cancel Order (per testare metrica cancelled)
+POST http://localhost:8085/api/v1/orders/7da9288a-8744-4eab-b503-e10297655e95/cancel
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBhZG1pbi5jb20iLCJyb2xlIjoiQURNSU4iLCJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImlhdCI6MTc3MjcxNjM5NywiZXhwIjoxNzcyODAyNzk3fQ.1Guk1NCsdmqnr3ZmNjNmaUXGncznuV-avaby8DcINvQ
 
 

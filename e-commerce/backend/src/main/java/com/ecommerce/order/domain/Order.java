@@ -85,7 +85,7 @@ public class Order extends BaseEntity {
     public boolean canTransitionTo(OrderStatus newStatus) {
         return switch (status) {
             case PENDING -> newStatus == OrderStatus.PAID || newStatus == OrderStatus.CANCELLED;
-            case PAID -> newStatus == OrderStatus.PROCESSING || newStatus == OrderStatus.CANCELLED || newStatus == OrderStatus.REFUNDED;
+            case PAID -> newStatus == OrderStatus.PROCESSING || newStatus == OrderStatus.CANCELLED;
             case PROCESSING -> newStatus == OrderStatus.SHIPPED || newStatus == OrderStatus.CANCELLED;
             case SHIPPED -> newStatus == OrderStatus.DELIVERED;
             case DELIVERED -> newStatus == OrderStatus.REFUNDED;
