@@ -8,3 +8,5 @@ data
 .idea
 e-commerce/backend/.gradle
 e-commerce/backend/build
+test
+.vscode
