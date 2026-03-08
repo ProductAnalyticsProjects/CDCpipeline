@@ -105,3 +105,55 @@ services:
     volumes:
       - ./spark_apps:/opt/bitnami/spark/apps
       - ./data/spark_worker:/bitnami/spark
+
+  ecommerce-backend:
+    build:
+      context: ./e-commerce/backend
+      dockerfile: Dockerfile
+    container_name: ecommerce-backend
+    depends_on:
+      - postgres
+    ports:
+      - "8085:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommerce
+      - SPRING_DATASOURCE_USERNAME=user
+      - SPRING_DATASOURCE_PASSWORD=password
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  dbt:
+      image: ghcr.io/dbt-labs/dbt-postgres:1.7.0 # Usa l'immagine ufficiale per Postgres
+      container_name: dbt_transform
+      volumes:
+        - ./dbt_project:/usr/app # I tuoi modelli, macro e profili dbt
+      environment:
+        - DBT_PROFILES_DIR=/usr/app
+        - DBT_POSTGRES_HOST=postgres
+        - DBT_POSTGRES_USER=user
+        - DBT_POSTGRES_PW=password
+        - DBT_POSTGRES_DB=inventory
+        - DBT_POSTGRES_SCHEMA=public
+      profiles: [ "tools" ] # Opzionale: per non avviarlo sempre con 'up'
