@@ -72,55 +72,40 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
 
   spark-master:
-    image: bitnamilegacy/spark:3.5.1
+    build: .
+    image: my-spark-delta-4:latest
     container_name: spark-master
+    user: root
     environment:
-      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
-      - "8081:8080" # Web UI di Spark Master
-      - "7077:7077" # Porta per sottomettere i job
+      - "8081:8080"
+      - "7077:7077"
     volumes:
-      - ./spark_apps:/opt/bitnami/spark/apps # Cartella per i tuoi script Python
-      - ./data/spark_master:/bitnami/spark
-      - ./spark_checkpoints:/mnt/spark_checkpoints
+      - ./spark_apps:/opt/spark/apps
+      - ./data/spark_master:/opt/spark/work-dir
+      - ./spark_checkpoints:/opt/spark/checkpoints
 
   spark-worker:
-    image: bitnami/spark
+    build: .
+    image: my-spark-delta-4:latest
     container_name: spark-worker
+    user: root
     depends_on:
       - spark-master
     environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-      - SPARK_WORKER_MEMORY=1G
+      - SPARK_MASTER=spark://spark-master:7077
       - SPARK_WORKER_CORES=1
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
+      - SPARK_WORKER_MEMORY=1G
+      # IMPORTANTE: Il worker deve poter risolvere il nome del master
+      - SPARK_WORKER_WEBUI_PORT=8081
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     volumes:
-      - ./spark_apps:/opt/bitnami/spark/apps
-      - ./data/spark_worker:/bitnami/spark
-
-  ecommerce-backend:
-    build:
-      context: ./e-commerce/backend
-      dockerfile: Dockerfile
-    container_name: ecommerce-backend
-    depends_on:
-      - postgres
-    ports:
-      - "8085:8080"
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommerce
-      - SPRING_DATASOURCE_USERNAME=user
-      - SPRING_DATASOURCE_PASSWORD=password
-    restart: unless-stopped
+      - ./spark_apps:/opt/spark/apps
+      - ./data/spark_worker:/opt/spark/work-dir
+      - ./spark_checkpoints:/opt/spark/checkpoints
 
   prometheus:
     image: prom/prometheus:latest
