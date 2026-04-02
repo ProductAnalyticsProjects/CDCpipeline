@@ -79,6 +79,8 @@ services:
     environment:
       - SPARK_MASTER_HOST=spark-master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_SUBMIT_OPTS=--packages io.delta:delta-spark_2.12:3.0.0
+      - PATH=/opt/spark/bin:$PATH
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
       - "8081:8080"
@@ -101,6 +103,7 @@ services:
       - SPARK_WORKER_MEMORY=1G
       # IMPORTANTE: Il worker deve poter risolvere il nome del master
       - SPARK_WORKER_WEBUI_PORT=8081
+      - SPARK_SUBMIT_OPTS=--packages io.delta:delta-spark_2.12:3.0.0
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     volumes:
       - ./spark_apps:/opt/spark/apps
