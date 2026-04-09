@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:15:///ecommerce_test
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+
+  jpa:
+    show-sql: false
+
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    com.ecommerce: INFO
