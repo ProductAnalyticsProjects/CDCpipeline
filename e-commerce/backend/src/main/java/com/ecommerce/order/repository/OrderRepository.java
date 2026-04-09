@@ -34,4 +34,6 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.status = :status")
     long countByStatus(@Param("status") OrderStatus status);
+
+    Optional<Order> findByIdempotencyKey(String idempotencyKey);
 }

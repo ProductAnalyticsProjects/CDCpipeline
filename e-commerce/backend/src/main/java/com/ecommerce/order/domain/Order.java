@@ -45,6 +45,9 @@ public class Order extends BaseEntity {
     @Builder.Default
     private List<OrderItem> items = new ArrayList<>();
 
+    @Column(name = "idempotency_key", unique = true)
+    private String idempotencyKey;
+
     /**
      * Add item to order
      */

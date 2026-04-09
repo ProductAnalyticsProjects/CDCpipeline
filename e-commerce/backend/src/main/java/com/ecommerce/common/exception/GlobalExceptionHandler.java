@@ -1,8 +1,11 @@
 package com.ecommerce.common.exception;
 
+import jakarta.persistence.OptimisticLockException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -52,6 +55,19 @@ public class GlobalExceptionHandler {
             errors
         );
         problem.setTitle("Validation Failed");
+        problem.setProperty("timestamp", Instant.now());
+        return problem;
+    }
+
+    @ExceptionHandler(OptimisticLockException.class)
+    public ProblemDetail handleOptimisticLock(OptimisticLockException ex) {
+        log.warn("Optimistic lock conflict", ex);
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.CONFLICT,
+                "Resource was modified by another user. Please refresh and try again."
+        );
+        problem.setTitle("Conflict");
         problem.setProperty("timestamp", Instant.now());
         return problem;
     }

@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -70,8 +71,16 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderDto createOrder(CreateOrderRequest request) {
+    public OrderDto createOrder(CreateOrderRequest request, String idempotencyKey) {
+        if (idempotencyKey != null) {
+            Optional<Order> existing = orderRepository.findByIdempotencyKey(idempotencyKey);
+            if (existing.isPresent()) {
+                return orderMapper.toOrderDto(existing.get());
+            }
+        }
+
         Order order = new Order();
+        order.setIdempotencyKey(idempotencyKey);
         order.setCustomerEmail(request.customerEmail());
         order.setNotes(request.notes());
         for (OrderItemRequest i : request.items()) {
