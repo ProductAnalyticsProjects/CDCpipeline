@@ -1,3 +1,5 @@
+# spark_apps/maintenance/vacuum.py
+from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
 
 MINIO_ENDPOINT = "http://minio:9000"
@@ -5,7 +7,7 @@ MINIO_ACCESS = "minioadmin"
 MINIO_SECRET = "minioadmin"
 
 spark = (
-    SparkSession.builder.appName("inspect_bronze")
+    SparkSession.builder.appName("delta_vacuum")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config(
         "spark.sql.catalog.spark_catalog",
@@ -21,20 +23,21 @@ spark = (
         "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
     )
     .config("spark.delta.logStore.s3a.impl", "io.delta.storage.S3SingleDriverLogStore")
+    # Necessario per abbassare la retention sotto i 7 giorni default
+    .config("spark.databricks.delta.retentionDurationCheck.enabled", "false")
     .getOrCreate()
 )
 
-bronze_df = spark.read.format("delta").load("s3a://lakehouse/bronze/orders")
+TABLES = [
+    "s3a://lakehouse/bronze/orders",
+    "s3a://lakehouse/silver/orders",
+    "s3a://lakehouse/gold/orders",
+]
 
-bronze_df.printSchema()
-bronze_df.show(truncate=False)
+for path in TABLES:
+    print(f"VACUUM → {path}")
+    dt = DeltaTable.forPath(spark, path)
+    dt.vacuum(retentionHours=168)
+    print("  done")
 
-bronze_df.createOrReplaceTempView("bronze_orders")
-
-result = spark.sql("""
-    SELECT ingestion_date, cdc_op, COUNT(*) as record_count
-    FROM bronze_orders
-    GROUP BY ingestion_date, cdc_op
-    ORDER BY ingestion_date DESC
-""")
-result.show()
+spark.stop()

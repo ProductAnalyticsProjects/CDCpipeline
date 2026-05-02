@@ -8,6 +8,12 @@ from pyspark.sql.types import (
     StringType,
 )
 
+MINIO_ENDPOINT = "http://minio:9000"
+MINIO_ACCESS = "minioadmin"
+MINIO_SECRET = "minioadmin"
+BUCKET = "lakehouse"
+CHECKPOINT_BUCKET = "spark-checkpoints"
+
 spark = (
     SparkSession.builder.appName("CDC_bronze")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
@@ -15,6 +21,19 @@ spark = (
         "spark.sql.catalog.spark_catalog",
         "org.apache.spark.sql.delta.catalog.DeltaCatalog",
     )
+    # --- S3A / MinIO ---
+    .config("spark.hadoop.fs.s3a.endpoint", MINIO_ENDPOINT)
+    .config("spark.hadoop.fs.s3a.access.key", MINIO_ACCESS)
+    .config("spark.hadoop.fs.s3a.secret.key", MINIO_SECRET)
+    .config("spark.hadoop.fs.s3a.path.style.access", "true")  # obbligatorio per MinIO
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    .config(
+        "spark.hadoop.fs.s3a.aws.credentials.provider",
+        "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+    )
+    .config(
+        "spark.delta.logStore.s3a.impl", "io.delta.storage.S3SingleDriverLogStore"
+    )  # Delta su S3-compatible
     .getOrCreate()
 )
 
@@ -34,6 +53,23 @@ raw_df = (
     .load()
 )
 
+debezium_schema = StructType(
+    [
+        StructField(
+            "payload",
+            StructType(
+                [
+                    StructField("after", order_schema, True),
+                    StructField(
+                        "op", StringType(), True
+                    ),  # "c"=insert, "u"=update, "d"=delete
+                ]
+            ),
+            True,
+        )
+    ]
+)
+
 bronze_df = (
     raw_df.selectExpr("CAST(value AS STRING)")
     .select(from_json(col("value"), order_schema).alias("data"))
@@ -41,7 +77,7 @@ bronze_df = (
     .withColumn("ingestion_timestamp", current_timestamp())
     .withColumn(
         "source_file",
-        col("_medata.file_path")
+        col("_metadata.file_path")
         if "_metadata" in raw_df.columns
         else lit(None).cast(StringType()),
     )
@@ -49,9 +85,10 @@ bronze_df = (
 
 query = (
     bronze_df.writeStream.format("delta")
-    .option("checkpointLocation", "/mnt/spark_checkpoints/bronze_users")
+    .option("checkpointLocation", f"s3a://{CHECKPOINT_BUCKET}/bronze/orders")
     .outputMode("append")
-    .start("/opt/spark/work-dir/bronze/users")
+    .partitionBy("ingestion_date")
+    .start(f"s3a://{BUCKET}/bronze/orders")
 )
 
 query.awaitTermination()

@@ -1,0 +1,28 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-bronze",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "bronze/" },
+      "Expiration": { "Days": 90 }
+    },
+    {
+      "ID": "expire-silver",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "silver/" },
+      "Expiration": { "Days": 365 }
+    },
+    {
+      "ID": "expire-gold",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "gold/" },
+      "Expiration": { "Days": 730 }
+    },
+    {
+      "ID": "expire-checkpoints",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "" },
+      "Expiration": { "Days": 7 }
+    }
+  ]
+}
