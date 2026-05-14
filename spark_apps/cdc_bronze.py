@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, current_timestamp, lit, date_format
+from pyspark.sql.functions import from_json, col, current_timestamp, date_format
 from pyspark.sql.types import (
     StructField,
     StructType,
@@ -7,10 +7,11 @@ from pyspark.sql.types import (
     DoubleType,
     StringType,
 )
+import os
 
-MINIO_ENDPOINT = "http://minio:9000"
-MINIO_ACCESS = "minioadmin"
-MINIO_SECRET = "minioadmin"
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
+MINIO_ACCESS = os.environ["MINIO_ACCESS_KEY"]
+MINIO_SECRET = os.environ["MINIO_SECRET_KEY"]
 BUCKET = "lakehouse"
 CHECKPOINT_BUCKET = "spark-checkpoints"
 
@@ -72,16 +73,10 @@ debezium_schema = StructType(
 
 bronze_df = (
     raw_df.selectExpr("CAST(value AS STRING)")
-    .select(from_json(col("value"), order_schema).alias("data"))
-    .select("data.*")
+    .select(from_json(col("value"), debezium_schema).alias("debezium"))
+    .select(col("debezium.payload.after.*"), col("debezium.payload.op").alias("cdc_op"))
     .withColumn("ingestion_timestamp", current_timestamp())
     .withColumn("ingestion_date", date_format(col("ingestion_timestamp"), "yyyy-MM-dd"))
-    .withColumn(
-        "source_file",
-        col("_metadata.file_path")
-        if "_metadata" in raw_df.columns
-        else lit(None).cast(StringType()),
-    )
 )
 
 query = (

@@ -1,10 +1,11 @@
 # spark_apps/maintenance/vacuum.py
 from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
+import os
 
-MINIO_ENDPOINT = "http://minio:9000"
-MINIO_ACCESS = "minioadmin"
-MINIO_SECRET = "minioadmin"
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
+MINIO_ACCESS = os.environ["MINIO_ACCESS_KEY"]
+MINIO_SECRET = os.environ["MINIO_SECRET_KEY"]
 
 spark = (
     SparkSession.builder.appName("delta_vacuum")
