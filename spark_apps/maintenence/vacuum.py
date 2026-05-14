@@ -2,6 +2,11 @@
 from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+logger = logging.getLogger(__name__)
 
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS = os.environ["MINIO_ACCESS_KEY"]
@@ -35,10 +40,14 @@ TABLES = [
     "s3a://lakehouse/gold/orders",
 ]
 
+logger.info("Avvio job spark")
 for path in TABLES:
-    print(f"VACUUM → {path}")
-    dt = DeltaTable.forPath(spark, path)
-    dt.vacuum(retentionHours=168)
-    print("  done")
+    logger.info("VACUUM → %s", path)
+    try:
+        dt = DeltaTable.forPath(spark, path)
+        dt.vacuum(retentionHours=168)
+        logger.info("VACUUM completato %s", path)
+    except Exception as e:
+        logger.error("Errore Vacuum: %s", str(e))
 
 spark.stop()
