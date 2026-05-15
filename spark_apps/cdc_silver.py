@@ -53,7 +53,7 @@ user_df = (
     .option("dbtable", "public.users")
     .options(**POSTGRES_PROPERTIES)
     .load()
-    .select("id", "email", "name", "registered_at", "country")
+    .select("id", "email", "role", "created_at")
     .cache()
 )
 
@@ -78,17 +78,20 @@ def process_batch(batch_df, batch_id):
     deletes = batch_df.filter(col("cdc_op") == "d")
 
     enriched = (
-        upserts.join(user_df, upserts.tenant_id == user_df.id, "left")
+        upserts.join(
+            user_df.withColumnRenamed("created_at", "user_registered_at"),
+            upserts.customer_email == user_df.email,
+            "left",
+        )
         .drop(user_df.id)
         .withColumnRenamed("email", "user_email")
-        .withColumnRenamed("name", "user_name")
         .join(item_df, upserts.id == item_df.order_id, "left")
         .drop("order_id")
         .drop("cdc_op")
     )
 
     if not DeltaTable.isDeltaTable(spark, silver_path):
-        (enriched.write.format("delta").save(silver_path))
+        enriched.write.format("delta").save(silver_path)
         return
 
     silver = DeltaTable.forPath(spark, silver_path)

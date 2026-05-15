@@ -3,7 +3,7 @@ from pyspark.sql.functions import from_json, col, current_timestamp, date_format
 from pyspark.sql.types import (
     StructField,
     StructType,
-    IntegerType,
+    LongType,
     DoubleType,
     StringType,
 )
@@ -45,10 +45,15 @@ spark = (
 
 order_schema = StructType(
     [
-        StructField("id", IntegerType(), True),
-        StructField("order_number", StringType(), True),
-        StructField("amount", DoubleType(), True),
-        StructField("tenant_id", IntegerType(), True),
+        StructField("id", StringType(), True),
+        StructField("customer_email", StringType(), True),
+        StructField("status", StringType(), True),
+        StructField("total_amount", DoubleType(), True),
+        StructField("notes", StringType(), True),
+        StructField("created_at", LongType(), True),
+        StructField("updated_at", LongType(), True),
+        StructField("version", LongType(), True),
+        StructField("idempotency_key", StringType(), True),
     ]
 )
 
@@ -59,10 +64,9 @@ raw_df = (
     .option("subscribe", "fullfillment.public.orders")
     .option(
         "startingOffsets", "earliest"
-    )  # metto questa opzione nel caso venga sottoscritto un nuovo topic così viene generato un bronze completo di storico
+    )  # al primo avvio legge tutto il topic; i riavvii successivi usano il checkpoint
     .load()
 )
-
 
 debezium_schema = StructType(
     [
