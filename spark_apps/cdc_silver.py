@@ -3,6 +3,7 @@ from pyspark.sql.functions import col
 import os
 import logging
 from delta.tables import DeltaTable
+from spark_apps.silver_transforms import enrich_orders
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -72,23 +73,13 @@ item_df = (
 
 
 def process_batch(batch_df, batch_id):
+    logger.info("Elaborazione batch %s", batch_id)
     silver_path = f"s3a://{BUCKET}/silver/orders"
 
     upserts = batch_df.filter(col("cdc_op").isin("c", "u"))
     deletes = batch_df.filter(col("cdc_op") == "d")
 
-    enriched = (
-        upserts.join(
-            user_df.withColumnRenamed("created_at", "user_registered_at"),
-            upserts.customer_email == user_df.email,
-            "left",
-        )
-        .drop(user_df.id)
-        .withColumnRenamed("email", "user_email")
-        .join(item_df, upserts.id == item_df.order_id, "left")
-        .drop("order_id")
-        .drop("cdc_op")
-    )
+    enriched = enrich_orders(upserts, user_df, item_df)
 
     if not DeltaTable.isDeltaTable(spark, silver_path):
         enriched.write.format("delta").save(silver_path)
