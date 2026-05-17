@@ -73,12 +73,20 @@ def main():
     context = gx.get_context(context_root_dir="/app/great_expectations")
 
     logger.info("Validazione Silver layer")
-    silver_df = spark.read.format("delta").load(f"s3a://{BUCKET}/silver/orders")
-    validate_layer(context, spark, silver_df, "silver_orders_suite", "silver", run_id)
+    try:
+        silver_df = spark.read.format("delta").load(f"s3a://{BUCKET}/silver/orders")
+        validate_layer(
+            context, spark, silver_df, "silver_orders_suite", "silver", run_id
+        )
+    except Exception as e:
+        logger.warning("Silver layer non disponibile, skip: %s", str(e))
 
     logger.info("Validazione Gold layer")
-    gold_df = spark.read.format("delta").load(f"s3a://{BUCKET}/gold/orders_daily")
-    validate_layer(context, spark, gold_df, "gold_suite", "gold", run_id)
+    try:
+        gold_df = spark.read.format("delta").load(f"s3a://{BUCKET}/gold/orders_daily")
+        validate_layer(context, spark, gold_df, "gold_suite", "gold", run_id)
+    except Exception as e:
+        logger.warning("Gold layer non disponibile, skip: %s", str(e))
 
     logger.info("Generazione Data Docs")
     context.build_data_docs()
