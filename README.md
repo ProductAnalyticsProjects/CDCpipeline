@@ -8,30 +8,54 @@ Built entirely with open-source tools and runs locally with a single `docker-com
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    PG[(PostgreSQL\nWAL)]
+    DEB[Debezium CDC]
+    KAFKA[Apache Kafka\nKRaft mode]
+    BRONZE[Spark Structured Streaming\ncdc_bronze.py]
+    SILVER[Spark Structured Streaming\ncdc_silver.py]
+    JDBC[(Postgres\nusers · order_items)]
+    BRONZE_DL[Delta Lake\nbronze/orders]
+    SILVER_DL[Delta Lake\nsilver/orders]
+    GOLD_DL[Delta Lake\ngold/]
+    TRINO[Trino\nQuery Engine]
+    DBT[dbt\nGold Models]
+    GE[Great Expectations\nData Quality]
+    MINIO[(MinIO\nS3-compatible)]
+    PROM[Prometheus]
+    GRAF[Grafana]
+
+    PG -->|WAL replication slot| DEB
+    DEB -->|JSON events| KAFKA
+    KAFKA -->|readStream| BRONZE
+    BRONZE -->|write Delta| BRONZE_DL
+    BRONZE_DL -->|readStream| SILVER
+    JDBC -->|JDBC enrichment| SILVER
+    SILVER -->|MERGE upsert/delete| SILVER_DL
+    SILVER_DL -->|read| TRINO
+    TRINO -->|SQL| DBT
+    DBT -->|write| GOLD_DL
+    SILVER_DL -->|validate| GE
+    GOLD_DL -->|validate| GE
+    BRONZE_DL --- MINIO
+    SILVER_DL --- MINIO
+    GOLD_DL --- MINIO
+    PROM -->|scrape| GRAF
+
+    style BRONZE_DL fill:#cd7f32,color:#fff
+    style SILVER_DL fill:#c0c0c0,color:#000
+    style GOLD_DL fill:#ffd700,color:#000
+    style MINIO fill:#e8f4f8,color:#000
 ```
-PostgreSQL (WAL)
-      │
-      ▼
- Debezium CDC          ← captures INSERT / UPDATE / DELETE from WAL
-      │
-      ▼
-  Apache Kafka         ← decouples producers from consumers (KRaft, no ZooKeeper)
-  (KRaft mode)
-      │
-      ▼
- Spark Structured      ← streaming consumer, writes to Delta Lake
-   Streaming
-      │
-      ▼
-  Delta Lake           ← ACID lakehouse storage on MinIO (S3-compatible)
-  on MinIO
-      │
-      ▼
-     dbt               ← SQL transformations on top of the lakehouse
-      │
-      ▼
- Prometheus + Grafana  ← pipeline monitoring & alerting
-```
+
+### Medallion Architecture
+
+| Layer | Path | Description |
+|---|---|---|
+| 🥉 Bronze | `s3a://lakehouse/bronze/orders` | Raw CDC events — immutable, append-only |
+| 🥈 Silver | `s3a://lakehouse/silver/orders` | Enriched and deduplicated via MERGE |
+| 🥇 Gold | `s3a://lakehouse/gold/` | Business aggregations built by dbt via Trino |
 
 ---
 
@@ -44,7 +68,9 @@ PostgreSQL (WAL)
 | Message broker | Kafka 7.8 (KRaft) | Removes ZooKeeper dependency; standard in Kafka 3.x+ |
 | Stream processing | Spark 4.0 + Structured Streaming | Micro-batch with exactly-once semantics via Delta checkpointing |
 | Storage | Delta Lake 4.0 on MinIO | ACID transactions, time travel, schema evolution — S3-compatible locally |
-| Transformations | dbt | SQL-first, testable, version-controlled models on top of the lakehouse |
+| Query engine | Trino 435 | Distributed SQL engine bridging dbt and Delta Lake on MinIO |
+| Transformations | dbt + dbt-trino | SQL-first, testable, version-controlled Gold models |
+| Data quality | Great Expectations 0.18 | Automated validation of Silver and Gold layers with Data Docs |
 | Observability | Prometheus + Grafana | Consumer lag, throughput, and pipeline health metrics |
 | Containerization | Docker Compose | Full local setup in one command |
 
@@ -60,15 +86,33 @@ Raw Parquet has no ACID guarantees: a failed Spark job can leave partial files w
 
 ```
 CDCpipeline/
-├── docker-compose.yaml       # Full local environment
-├── dockerfile                # Custom Spark image with Delta + Kafka JARs
-├── debizium_api.bash         # Debezium connector registration script
-├── spark_apps/               # PySpark streaming jobs
-├── dbt_project/              # dbt models and transformations
-├── init-db/                  # PostgreSQL init scripts (schema + seed data)
-├── prometheus/               # Prometheus scrape configuration
-├── policies/                 # MinIO lifecycle policies
-└── .pre-commit-config.yaml   # Code quality hooks
+├── docker-compose.yaml          # Full local environment
+├── dockerfile                   # Custom Spark image with Delta + Kafka JARs
+├── requirements.txt             # Python dependencies (GE, delta-spark, psycopg2)
+├── debizium_api.bash            # Debezium connector registration script
+├── spark_apps/                  # PySpark streaming jobs
+│   ├── cdc_bronze.py            # Kafka → Delta Lake (Bronze)
+│   ├── cdc_silver.py            # Bronze → Silver with JDBC enrichment
+│   ├── silver_transforms.py     # Pure enrichment function (testable)
+│   └── tests/                   # Unit and integration tests
+├── great_expectations/          # Data quality
+│   ├── great_expectations.yml   # GE configuration
+│   ├── validate.py              # Validation script (Silver + Gold)
+│   └── expectations/            # Expectation suites (Silver, Gold)
+├── trino/                       # Trino query engine config
+│   ├── config.properties
+│   ├── node.properties
+│   ├── jvm.config
+│   ├── init.sql                 # Delta table registration
+│   └── catalog/delta.properties # Delta Lake connector
+├── dbt_project/                 # dbt Gold layer
+│   ├── profiles.yml             # Trino connection
+│   ├── dbt_project.yml
+│   └── models/gold/             # Gold SQL models + schema tests
+├── init-db/                     # PostgreSQL init scripts
+├── prometheus/                  # Prometheus scrape configuration
+├── minio-policies/              # MinIO lifecycle policies
+└── .pre-commit-config.yaml      # Code quality hooks
 ```
 
 ---
@@ -135,6 +179,7 @@ docker compose run --rm dbt test
 | Kafka UI | http://localhost:8080 | — |
 | Spark Master UI | http://localhost:8081 | — |
 | Debezium REST API | http://localhost:8083 | — |
+| Trino | http://localhost:8084 | — |
 | MinIO Console | http://localhost:9001 | see `.env` |
 | Grafana | http://localhost:3000 | see `.env` |
 | Prometheus | http://localhost:9090 | — |
@@ -180,7 +225,9 @@ Prometheus scrapes metrics from the Spark JMX exporter and Kafka JMX. Grafana da
 | Debezium | 2.5 |
 | Apache Spark | 4.0.0 |
 | Delta Lake | 4.0.0 |
-| dbt-postgres | 1.7.0 |
+| Trino | 435 |
+| dbt-trino | 1.7.0 |
+| Great Expectations | 0.18.19 |
 | MinIO | latest |
 
 ---
