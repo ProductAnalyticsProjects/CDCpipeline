@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: gold_orders_daily
+    description: "Aggregazione giornaliera degli ordini"
+    columns:
+      - name: order_date
+        description: "Data dell'ordine"
+        tests:
+          - not_null
+          - unique
+      - name: total_orders
+        tests:
+          - not_null
+      - name: total_revenue
+        tests:
+          - not_null
+
+  - name: gold_orders_by_status
+    description: "Distribuzione degli ordini per stato"
+    columns:
+      - name: status
+        description: "Stato dell'ordine"
+        tests:
+          - not_null
+          - unique
+
+  - name: gold_customer_summary
+    description: "Riepilogo acquisti per cliente"
+    columns:
+      - name: user_email
+        description: "Email del cliente"
+        tests:
+          - not_null
+          - unique
+      - name: total_spent
+        tests:
+          - not_null

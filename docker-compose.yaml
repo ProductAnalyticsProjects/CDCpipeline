@@ -175,7 +175,7 @@ services:
       - pipeline
 
   dbt:
-    image: ghcr.io/dbt-labs/dbt-postgres:1.7.0 # Usa l'immagine ufficiale per Postgres
+    image: ghcr.io/dbt-labs/dbt-trino:1.7.0 # Usa l'immagine ufficiale per Trino
     container_name: dbt_transform
     volumes:
       - ./dbt_project:/usr/app # I tuoi modelli, macro e profili dbt
@@ -189,6 +189,9 @@ services:
     profiles: [ "tools" ] # Opzionale: per non avviarlo sempre con 'up'
     networks:
       - pipeline
+    depends_on:
+      - trino
+
   minio:
     image: minio/minio:latest
     container_name: minio
@@ -229,6 +232,59 @@ services:
     networks:
       - pipeline
 
+  trino:
+    image: trinodb/trino:435
+    container_name: trino
+    ports:
+      - "8084:8084"
+    volumes:
+      - ./trino/config.properties:/etc/trino/config.properties
+      - ./trino/node.properties:/etc/trino/node.properties
+      - ./trino/jvm.config:/etc/trino/jvm.config
+      - ./trino/catalog:/etc/trino/catalog
+      - trino_data:/data/trino
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - pipeline
+
+
+  trino-init:
+    image: trinodb/trino:435
+    container_name: trino-init
+    depends_on:
+      - trino
+    volumes:
+      - ./trino/init.sql:/init.sql
+    entrypoint: >
+      /bin/sh -c "
+        sleep 20;
+        trino --server http://trino:8084 --catalog delta --schema default -f /init.sql;
+        exit 0;
+      "
+    networks:
+      - pipeline
+
+
+  great-expectations:
+    image: my-spark-delta-4:latest
+    container_name: great-expectations
+    user: root
+    environment:
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ./great_expectations:/app/great_expectations
+    depends_on:
+      minio:
+        condition: service_healthy
+    command: >
+      python /app/great_expectations/validate.py
+    networks:
+      - pipeline
+
 networks:
   pipeline:
     driver: bridge
@@ -239,3 +295,4 @@ volumes:
   minio_data:
   grafana_data:
   spark_checkpoints:
+  trino_data:
