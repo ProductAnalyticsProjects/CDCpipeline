@@ -80,7 +80,7 @@ def main():
     BUCKET = "lakehouse"
     CHECKPOINT_BUCKET = "spark-checkpoints"
 
-    POSTGRES_URL = "jdbc:postgresql://postgres:5432/fullfillment"
+    POSTGRES_URL = "jdbc:postgresql://postgres:5432/inventory"
     POSTGRES_PROPERTIES = {
         "user": os.environ["POSTGRES_USER"],
         "password": os.environ["POSTGRES_PASSWORD"],
