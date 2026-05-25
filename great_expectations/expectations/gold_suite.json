@@ -1,0 +1,41 @@
+{
+  "expectation_suite_name": "gold_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "order_date" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": { "column": "order_date" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "total_orders",
+        "min_value": 1,
+        "strict_min": false
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "total_revenue",
+        "min_value": 0,
+        "strict_min": true
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "avg_order_value",
+        "min_value": 0,
+        "strict_min": true
+      }
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "0.18.0",
+    "description": "Validazioni per gold_orders_daily"
+  }
+}

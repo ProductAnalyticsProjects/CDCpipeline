@@ -1,12 +1,11 @@
-postgres:
+ecommerce_dbt:
   target: dev
   outputs:
     dev:
-      type: postgres
-      host: postgres
-      port: 5432
-      user: user
-      password: password
-      dbname: inventory
-      schema: analytics_dev
-      threads: 1
+      type: trino
+      method: none
+      host: trino
+      port: 8084
+      database: delta
+      schema: default
+      threads: 4

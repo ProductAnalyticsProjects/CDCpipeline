@@ -12,3 +12,22 @@ test
 .vscode
 
 e-commerce/frontend/node_modules
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Environment variables (mai committare credenziali)
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Spark output locali
+data/
+
+# great_expectation
+data_docs/
