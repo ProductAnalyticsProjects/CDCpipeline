@@ -1,9 +1,12 @@
 package com.ecommerce.order.service;
 
 
+import com.ecommerce.auth.domain.User;
+import com.ecommerce.auth.repository.UserRepository;
 import com.ecommerce.common.exception.BusinessException;
 import com.ecommerce.common.exception.ResourceNotFoundException;
 import com.ecommerce.common.metrics.MetricsService;
+import com.ecommerce.common.outbox.OutboxService;
 import com.ecommerce.inventory.dto.StockAddRequest;
 import com.ecommerce.inventory.service.StockService;
 import com.ecommerce.order.domain.Order;
@@ -13,10 +16,10 @@ import com.ecommerce.order.dto.CreateOrderRequest;
 import com.ecommerce.order.dto.OrderDto;
 import com.ecommerce.order.dto.OrderItemRequest;
 import com.ecommerce.order.dto.OrderMapper;
+import com.ecommerce.order.events.OrderCreatedV1;
 import com.ecommerce.order.repository.OrderRepository;
 import com.ecommerce.product.domain.Product;
 import com.ecommerce.product.repository.ProductRepository;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,22 +28,27 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@SuppressWarnings("NullableProblems")
 public class OrderService {
+    private final Supplier<UUID> uuidSupplier;
+    private final Clock clock;
     @Value( "${app.inventory.default-warehouse-id}") UUID  defaultWarehouseId;
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
     private final ProductRepository productRepository;
     private final StockService stockService;
     private final MetricsService metricsService;
+    private final OutboxService outboxService;
+    private final UserRepository userRepository;
 
 
     @Transactional(readOnly = true)
@@ -103,6 +111,19 @@ public class OrderService {
         }
         order.recalculateTotal();
         orderRepository.save(order);
+        User customer = userRepository.findByEmail(request.customerEmail()).orElseThrow(() -> new ResourceNotFoundException("Customer", request.customerEmail()));
+        OrderCreatedV1 orderCreatedV1 = new OrderCreatedV1(
+                uuidSupplier.get(),
+                order.getId(),
+                customer.getId(),
+                order.getTotalAmount(),
+                order.getItems().stream().map(e -> new OrderCreatedV1.OrderLine(e.getProduct().getId(),
+                        e.getQuantity(), e.getUnitPrice(), e.getSubtotal())).toList(),
+                order.getNotes(),
+                clock.instant()
+
+        );
+        outboxService.publish(orderCreatedV1);
         metricsService.incrementOrdersCreated();
         return orderMapper.toOrderDto(order);
 
