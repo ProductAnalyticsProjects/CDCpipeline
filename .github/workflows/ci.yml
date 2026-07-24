@@ -1,0 +1,278 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI: qualità del codice, test e validazione config
+#
+# Gira su ogni push e su ogni pull request verso i branch principali.
+# I 4 job sono INDIPENDENTI e girano in parallelo: se il lint fallisce,
+# vuoi comunque sapere se anche i test falliscono. Non li mettiamo in serie.
+# ─────────────────────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Se pushi due volte di fila sullo stesso branch/PR, annulla la run vecchia:
+# non ha senso pagare CI per commit già superati.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. LINT + FORMAT ────────────────────────────────────────────────────────
+  # Riusiamo il TUO .pre-commit-config.yaml: la CI esegue esattamente gli stessi
+  # hook che giri in locale (ruff + ruff-format). Un'unica fonte di verità:
+  # se aggiorni la versione di ruff nel pre-commit, la CI la segue in automatico.
+  lint:
+    name: Lint & format (pre-commit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run pre-commit on all files
+        uses: pre-commit/action@v3.0.1
+        # In CI vogliamo solo *controllare*, non modificare: se ruff dovrebbe
+        # riformattare qualcosa, l'hook esce con codice ≠ 0 e il job fallisce.
+
+  # ── 2. TEST (pytest sugli Spark apps) ───────────────────────────────────────
+  test:
+    name: Unit tests (pytest + Spark)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Spark 4.0 gira sulla JVM: PySpark ha bisogno di Java 17.
+      # Senza questo step i test falliscono con "JAVA_HOME not set".
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # I test unitari importano solo pyspark e delta.tables, NON
+          # great-expectations/psycopg2 (che appesantirebbero e possono dare
+          # conflitti). Installiamo delta-spark (che tira pyspark 4.0, allineato
+          # a produzione) + le dev deps (pytest).
+          pip install "delta-spark==4.0.0" -r requirements-dev.txt
+
+      - name: Run pytest
+        env:
+          # I test creano una SparkSession locale; fissiamo l'IP per evitare
+          # che Spark provi a risolvere l'hostname del runner (a volte fallisce).
+          SPARK_LOCAL_IP: 127.0.0.1
+        # --ignore: i test in tests/integration/ richiedono Kafka/Postgres
+        # reali (service container) e girano nel job `integration-test`.
+        run: pytest spark_apps/tests -v --ignore=spark_apps/tests/integration
+
+  # ── 3. VALIDAZIONE dbt ──────────────────────────────────────────────────────
+  # Non facciamo `dbt build` in CI: richiederebbe Trino + Delta Lake + MinIO
+  # accesi (l'intero stack). Facciamo `dbt parse`, che valida SQL, riferimenti
+  # ref()/source() e schema.yml SENZA connettersi al warehouse. Prende il 90%
+  # degli errori (typo nei ref, modelli mancanti) in pochi secondi.
+  dbt-validate:
+    name: dbt parse
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dbt_project
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dbt-trino
+        # 1.9.x installa in modo pulito su Python 3.11; le 1.8.x tirano una
+        # dipendenza vecchia che non compila più.
+        run: pip install "dbt-trino==1.9.*"
+
+      # L'adapter Trino esige un campo `user` anche solo per il parse. Il tuo
+      # profiles.yml usa `method: none` senza user (giusto, dato che in locale
+      # ti connetti al Trino del compose). Qui generiamo un profilo CI usa-e-getta
+      # con lo stesso nome, così NON tocchiamo il file committato.
+      - name: Write CI dbt profile
+        run: |
+          mkdir -p "$HOME/.dbt"
+          cat > "$HOME/.dbt/profiles.yml" <<'EOF'
+          ecommerce_dbt:
+            target: ci
+            outputs:
+              ci:
+                type: trino
+                method: none
+                user: ci
+                host: localhost
+                port: 8084
+                database: delta
+                schema: default
+                threads: 1
+          EOF
+
+      - name: Parse dbt project
+        # Usa ~/.dbt/profiles.yml (quello CI), non quello del repo.
+        run: dbt parse
+
+  # ── 4. VALIDAZIONE docker-compose + coerenza versioni ───────────────────────
+  compose-validate:
+    name: Compose & version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `docker compose config` fa il merge di tutto (env, anchor, override) e
+      # fallisce se il file ha errori di sintassi o variabili non risolvibili.
+      - name: Validate docker-compose.yaml
+        run: |
+          cp env.example .env   # placeholder per risolvere i ${VAR}
+          docker compose -f docker-compose.yaml config --quiet
+          echo "✅ docker-compose.yaml valido"
+
+      # Controllo mirato sul problema storico del progetto: Scala/Spark/Delta
+      # devono essere allineati tra dockerfile e jar scaricati, altrimenti
+      # ottieni errori runtime silenziosi (ClassNotFound).
+      - name: Check Scala/Spark/Delta version consistency
+        run: |
+          set -e
+          echo "Versioni dichiarate nel dockerfile:"
+          grep -E "spark:|delta-spark_|delta-storage|spark-sql-kafka" dockerfile
+          # Spark base image e delta-spark devono essere entrambi 4.0.0 con Scala 2.13
+          spark_base=$(grep -oE "apache/spark:[0-9.]+" dockerfile | head -1)
+          delta_ver=$(grep -oE "delta-spark_2\.13/[0-9.]+" dockerfile | head -1)
+          echo "Base: $spark_base | Delta: $delta_ver"
+          if ! echo "$spark_base" | grep -q "4.0.0"; then
+            echo "::warning::Spark base image non è 4.0.0 — verifica la coerenza"
+          fi
+          if ! echo "$delta_ver" | grep -q "4.0.0"; then
+            echo "::error::delta-spark non è 4.0.0 — mismatch con Spark 4.0.0"
+            exit 1
+          fi
+          echo "✅ Versioni coerenti"
+
+  # ── 5. INTEGRATION TEST (Postgres + Kafka reali) ────────────────────────────
+  # Diverso dal job `test`: qui NON mockiamo nulla. Postgres e Kafka sono
+  # service container veri, avviati da GitHub Actions e raggiungibili su
+  # localhost (i job di questo file girano direttamente sul runner, non
+  # dentro un container, quindi le porte pubblicate sono su localhost).
+  #
+  # Copre due cose che i unit test non possono coprire:
+  #   a) il footgun storico della CDC: wal_level=logical + replica slot
+  #      funzionanti (script scripts/check_postgres_cdc_readiness.sh)
+  #   b) il parsing dell'envelope Debezium letto da un topic Kafka VERO,
+  #      non da un DataFrame costruito a mano — questo è il test che
+  #      avrebbe intercettato il bug storico "debezium_schema mai usato"
+  integration-test:
+    name: Integration (Postgres + Kafka)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      # KRaft mode (nessun Zookeeper): i service container di GitHub Actions
+      # non supportano un `command:` custom, quindi serve un'immagine
+      # configurabile solo via env — bitnami/kafka lo è.
+      kafka:
+        image: bitnami/kafka:3.7
+        env:
+          KAFKA_ENABLE_KRAFT: "yes"
+          KAFKA_CFG_NODE_ID: "1"
+          KAFKA_CFG_PROCESS_ROLES: "broker,controller"
+          KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+          KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+          KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
+          KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+          KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+          ALLOW_PLAINTEXT_LISTENER: "yes"
+        ports:
+          - 9092:9092
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "delta-spark==4.0.0" "kafka-python==2.0.*" -r requirements-dev.txt
+
+      - name: Wait for Kafka to accept connections
+        run: |
+          for i in $(seq 1 30); do
+            (echo > /dev/tcp/localhost/9092) >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "::error::Kafka non ha aperto la porta 9092 in tempo"
+          exit 1
+
+      - name: Check Postgres CDC readiness (wal_level, init.sql, replication slot)
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_DB: ci_test
+        run: bash scripts/check_postgres_cdc_readiness.sh
+
+      - name: Run Kafka integration tests
+        env:
+          SPARK_LOCAL_IP: 127.0.0.1
+          KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+        run: pytest spark_apps/tests/integration -v -m integration
+
+  # ── 6. INTEGRITÀ DAG AIRFLOW ─────────────────────────────────────────────────
+  # DagBag importa tutti i file in dags/ come farebbe lo scheduler Airflow.
+  # Non serve un cluster Airflow acceso: intercetta errori di import, cicli
+  # nel grafo, default_args mancanti (owner/retries), catchup non esplicito.
+  # Vedi dags/tests/test_dag_integrity.py per il dettaglio dei controlli.
+  dag-integrity:
+    name: Airflow DAG integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"   # versione più testata per apache-airflow==2.9.x
+          cache: pip
+
+      - name: Install Airflow (con constraints ufficiali)
+        run: |
+          pip install "apache-airflow==2.9.3" pytest \
+            --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.3/constraints-3.10.txt"
+
+      - name: Run DAG integrity tests
+        env:
+          AIRFLOW_HOME: /tmp/airflow_home   # evita di scrivere in $HOME sul runner
+        run: pytest dags/tests -v

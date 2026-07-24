@@ -1,0 +1,9 @@
+# Dipendenze per l'immagine Airflow (build via airflow/Dockerfile).
+# Separato da requirements.txt e requirements-dev.txt: Airflow ha un suo
+# grafo di dipendenze molto vincolato (constraints file ufficiale), mischiarlo
+# coi requirements di Spark/dbt creerebbe conflitti di risoluzione.
+#
+# Niente providers extra (docker/postgres/kafka): i DAG usano solo BashOperator
+# e PythonOperator + requests (già incluso nel core di Airflow) per parlare
+# con la REST API di Spark Master e con Docker via CLI — non serve altro.
+apache-airflow==2.9.3

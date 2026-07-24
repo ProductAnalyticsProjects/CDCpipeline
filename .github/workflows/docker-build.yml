@@ -1,0 +1,63 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Docker: build dell'immagine Spark (e push su GHCR)
+#
+# Separato dalla CI perché è più lento e ha bisogno di permessi diversi
+# (scrittura sul registry). Strategia:
+#   - su PR      → build only (verifichiamo che il dockerfile compili)
+#   - su main    → build + push su GitHub Container Registry (ghcr.io)
+# ─────────────────────────────────────────────────────────────────────────────
+name: Docker build
+
+on:
+  push:
+    branches: [main, master]
+    # Ricostruisci solo se cambia qualcosa che finisce nell'immagine.
+    paths:
+      - "dockerfile"
+      - "requirements.txt"
+      - "spark_apps/**"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "dockerfile"
+      - "requirements.txt"
+      - "spark_apps/**"
+
+jobs:
+  docker:
+    name: Build Spark image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # serve per pushare su ghcr.io
+    steps:
+      - uses: actions/checkout@v4
+
+      # Buildx abilita cache avanzata e build più veloci.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login al registry SOLO quando pushiamo davvero (push su main, non PR).
+      # Le PR da fork non hanno accesso ai secret: il login le farebbe fallire.
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # token automatico, nessun setup
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./dockerfile
+          # push=true solo sui push su main; sulle PR facciamo solo build.
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ghcr.io/${{ github.repository }}/spark:latest
+            ghcr.io/${{ github.repository }}/spark:${{ github.sha }}
+          # Cache dei layer tra una run e l'altra: il dockerfile scarica molti
+          # jar da Maven, cacharli fa risparmiare minuti a ogni build.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

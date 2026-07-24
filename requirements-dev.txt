@@ -1,0 +1,9 @@
+# Dipendenze SOLO per sviluppo e CI (test, lint).
+# Tenerle separate da requirements.txt evita di gonfiare l'immagine Docker
+# di produzione con pytest & co.
+#
+# pyspark NON è qui: arriva già come dipendenza di delta-spark==4.0.0
+# (definito in requirements.txt), quindi la versione resta allineata.
+
+pytest==8.3.*
+pre-commit==4.*
