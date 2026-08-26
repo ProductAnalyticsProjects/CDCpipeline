@@ -17,4 +17,3 @@ public record StockAddRequest(
         Integer quantity
 ) {
 }
-
