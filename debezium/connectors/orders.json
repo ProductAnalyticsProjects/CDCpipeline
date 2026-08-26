@@ -1,0 +1,24 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "database.hostname": "postgres",
+  "database.port": "5432",
+  "database.user": "user",
+  "database.password": "password",
+  "database.dbname": "ecommerce",
+  "topic.prefix": "fullfillment",
+  "table.include.list": "public.orders",
+  "plugin.name": "pgoutput",
+
+  "slot.name": "debezium_orders_slot",
+  "publication.name": "debezium_orders_publication",
+  "publication.autocreate.mode": "filtered",
+
+  "snapshot.mode": "initial",
+
+  "heartbeat.interval.ms": "10000",
+
+  "decimal.handling.mode": "precise",
+  "time.precision.mode": "adaptive_time_microseconds",
+
+  "tombstones.on.delete": "true"
+}

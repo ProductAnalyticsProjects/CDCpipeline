@@ -89,7 +89,8 @@ CDCpipeline/
 ├── docker-compose.yaml          # Full local environment
 ├── dockerfile                   # Custom Spark image with Delta + Kafka JARs
 ├── requirements.txt             # Python dependencies (GE, delta-spark, psycopg2)
-├── debizium_api.bash            # Debezium connector registration script
+├── debezium/connectors/          # Debezium connector config (config-as-code)
+├── scripts/register-debezium-connector.sh  # Registrazione idempotente (PUT)
 ├── spark_apps/                  # PySpark streaming jobs
 │   ├── cdc_bronze.py            # Kafka → Delta Lake (Bronze)
 │   ├── cdc_silver.py            # Bronze → Silver with JDBC enrichment
@@ -149,10 +150,10 @@ docker compose ps              # all services should show "healthy" or "running"
 **3. Register the Debezium connector**
 
 ```bash
-bash debizium_api.bash
+bash scripts/register-debezium-connector.sh
 ```
 
-This registers the PostgreSQL connector, which immediately begins capturing changes from the `public.orders` table.
+This registers the PostgreSQL connector (config in `debezium/connectors/orders.json` — see [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-connector-config.md) for the rationale behind each setting), which immediately begins capturing changes from the `public.orders` table. The script is idempotent — safe to re-run after changing the config.
 
 **4. Submit the Spark streaming job**
 
@@ -199,11 +200,17 @@ docker compose run --rm dbt test
 
 ## Observability
 
-Prometheus scrapes metrics from the Spark JMX exporter and Kafka JMX. Grafana dashboards cover:
+**Current state:** Prometheus scrapes only the e-commerce backend's Spring
+Actuator endpoint (`/api/actuator/prometheus`). Grafana is running but ships
+with no provisioned dashboards or datasource — it's an empty shell today,
+not a monitoring stack.
 
-- Kafka consumer lag per topic/partition
-- Spark streaming batch duration and throughput (rows/s)
-- MinIO storage utilization
+**Planned** (see [ROADMAP.md](ROADMAP.md), Fase 7): Kafka consumer lag via
+kafka-exporter, Spark streaming batch duration/throughput via a
+`StreamingQueryListener`, and — the metric that matters most for a CDC
+pipeline — PostgreSQL replication slot lag (`pg_replication_slots`), plus
+Grafana dashboards and datasources committed as code, not clicked together
+by hand.
 
 ---
 
