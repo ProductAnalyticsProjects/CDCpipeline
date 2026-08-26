@@ -78,9 +78,14 @@ jobs:
           # I test creano una SparkSession locale; fissiamo l'IP per evitare
           # che Spark provi a risolvere l'hostname del runner (a volte fallisce).
           SPARK_LOCAL_IP: 127.0.0.1
-        # --ignore: i test in tests/integration/ richiedono Kafka/Postgres
-        # reali (service container) e girano nel job `integration-test`.
-        run: pytest spark_apps/tests -v --ignore=spark_apps/tests/integration
+        # --ignore esclude la cartella tests/integration/ (richiede Kafka/
+        # Postgres reali, gira nel job `integration-test`), MA due test in
+        # test_silver_enrichment.py sono marcati @pytest.mark.integration
+        # pur vivendo fuori da quella cartella (richiedono i JAR Delta reali,
+        # non disponibili con la sola pip install di questo job) — --ignore
+        # da solo non li esclude. -m "not integration" li filtra per marker,
+        # indipendentemente da dove si trovano.
+        run: pytest spark_apps/tests -v --ignore=spark_apps/tests/integration -m "not integration"
 
   # ── 3. VALIDAZIONE dbt ──────────────────────────────────────────────────────
   # Non facciamo `dbt build` in CI: richiederebbe Trino + Delta Lake + MinIO
@@ -201,8 +206,14 @@ jobs:
       # KRaft mode (nessun Zookeeper): i service container di GitHub Actions
       # non supportano un `command:` custom, quindi serve un'immagine
       # configurabile solo via env — bitnami/kafka lo è.
+      #
+      # bitnamilegacy/ (non bitnami/): nel 2025 Bitnami ha ristretto il
+      # namespace `bitnami/` su Docker Hub a un catalogo curato ("Secure
+      # Images"), spostando le vecchie immagini gratuite — inclusa questa —
+      # su `bitnamilegacy/`. Stessa immagine, stesse variabili KAFKA_CFG_*,
+      # solo il namespace è cambiato. Verificato con `docker pull` reale.
       kafka:
-        image: bitnami/kafka:3.7
+        image: bitnamilegacy/kafka:3.7
         env:
           KAFKA_ENABLE_KRAFT: "yes"
           KAFKA_CFG_NODE_ID: "1"
