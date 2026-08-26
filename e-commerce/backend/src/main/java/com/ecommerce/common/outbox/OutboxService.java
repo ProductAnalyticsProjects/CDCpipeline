@@ -32,7 +32,6 @@ public class OutboxService {
                     clock.instant()
             );
             outboxRepository.save(newEvent);
-            outboxRepository.save(newEvent);
             log.debug("Outbox event persisted: type={}, aggregateId={}, eventId={}",
                     event.eventType(), event.aggregateId(), event.eventId());
         } catch (JsonProcessingException e) {
