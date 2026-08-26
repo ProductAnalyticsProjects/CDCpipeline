@@ -1,37 +1,64 @@
 version: 2
+
+# Cadenza mensile + raggruppamento: un progetto mantenuto part-time da 1-2
+# persone non ha la capacità di triage per una PR a settimana per pacchetto
+# (visto in pratica: 15 PR aperte nello stesso istante alla prima attivazione).
+# I bump minor/patch di ogni ecosistema si raggruppano in un'unica PR — sono
+# a basso rischio, ha senso rivederli insieme. I bump MAJOR restano fuori dal
+# gruppo apposta: arrivano come PR singola e ben visibile, perché sono quelli
+# che possono rompere qualcosa (visto in pratica: Spark 4.0→4.2 avrebbe rotto
+# l'invariante di coerenza versioni verificato dalla CI).
 updates:
   # Le GitHub Actions usate nei workflow (actions/checkout, docker/build-push-action, ecc.)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      github-actions-minor-patch:
+        update-types: ["minor", "patch"]
 
   # Dipendenze Python della pipeline (requirements.txt, requirements-dev.txt, requirements-airflow.txt)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      pip-minor-patch:
+        update-types: ["minor", "patch"]
 
   # Backend Spring Boot
   - package-ecosystem: "gradle"
     directory: "/e-commerce/backend"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      gradle-minor-patch:
+        update-types: ["minor", "patch"]
 
   # Frontend React
   - package-ecosystem: "npm"
     directory: "/e-commerce/frontend"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
 
   # Immagine Spark custom
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      docker-spark-minor-patch:
+        update-types: ["minor", "patch"]
 
   # Immagine Airflow custom
   - package-ecosystem: "docker"
     directory: "/airflow"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      docker-airflow-minor-patch:
+        update-types: ["minor", "patch"]
