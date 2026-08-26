@@ -1,0 +1,37 @@
+version: 2
+updates:
+  # Le GitHub Actions usate nei workflow (actions/checkout, docker/build-push-action, ecc.)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Dipendenze Python della pipeline (requirements.txt, requirements-dev.txt, requirements-airflow.txt)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Backend Spring Boot
+  - package-ecosystem: "gradle"
+    directory: "/e-commerce/backend"
+    schedule:
+      interval: "weekly"
+
+  # Frontend React
+  - package-ecosystem: "npm"
+    directory: "/e-commerce/frontend"
+    schedule:
+      interval: "weekly"
+
+  # Immagine Spark custom
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Immagine Airflow custom
+  - package-ecosystem: "docker"
+    directory: "/airflow"
+    schedule:
+      interval: "weekly"
