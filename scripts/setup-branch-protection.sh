@@ -32,7 +32,7 @@ gh api \
   --method PUT \
   -H "Accept: application/vnd.github+json" \
   "repos/${REPO}/branches/${BRANCH}/protection" \
-  -f "required_status_checks[strict]=true" \
+  -F "required_status_checks[strict]=true" \
   -f "required_status_checks[checks][][context]=Lint & format (pre-commit)" \
   -f "required_status_checks[checks][][context]=Unit tests (pytest + Spark)" \
   -f "required_status_checks[checks][][context]=dbt parse" \
@@ -40,8 +40,8 @@ gh api \
   -f "required_status_checks[checks][][context]=Integration (Postgres + Kafka)" \
   -f "required_status_checks[checks][][context]=Airflow DAG integrity" \
   -F "enforce_admins=true" \
-  -f "required_pull_request_reviews[required_approving_review_count]=0" \
-  -f "required_pull_request_reviews[dismiss_stale_reviews]=true" \
+  -F "required_pull_request_reviews[required_approving_review_count]=0" \
+  -F "required_pull_request_reviews[dismiss_stale_reviews]=true" \
   -F "restrictions=null" \
   -F "allow_force_pushes=false" \
   -F "allow_deletions=false" \
