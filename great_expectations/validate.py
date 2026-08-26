@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 from pyspark.sql import SparkSession
 import great_expectations as gx
@@ -72,25 +73,43 @@ def main():
     spark = create_spark_session(MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET)
     context = gx.get_context(context_root_dir="/app/great_expectations")
 
+    # Un layer assente (silver/gold non ancora scritti) è un legittimo skip,
+    # non un fallimento: il try/except sotto copre solo quel caso. Una
+    # validazione che GIRA ma trova aspettative rosse è invece un fallimento
+    # vero e deve far uscire lo script con codice diverso da zero — altrimenti
+    # `docker compose run --rm great-expectations` (e quindi il task Airflow
+    # che lo lancia in cdc_batch_pipeline) risulta sempre verde a prescindere
+    # dal risultato, e la validazione diventa un log che nessuno legge invece
+    # che un gate.
+    any_failure = False
+
     logger.info("Validazione Silver layer")
     try:
         silver_df = spark.read.format("delta").load(f"s3a://{BUCKET}/silver/orders")
-        validate_layer(
+        results = validate_layer(
             context, spark, silver_df, "silver_orders_suite", "silver", run_id
         )
+        if not results["success"]:
+            any_failure = True
     except Exception as e:
         logger.warning("Silver layer non disponibile, skip: %s", str(e))
 
     logger.info("Validazione Gold layer")
     try:
         gold_df = spark.read.format("delta").load(f"s3a://{BUCKET}/gold/orders_daily")
-        validate_layer(context, spark, gold_df, "gold_suite", "gold", run_id)
+        results = validate_layer(context, spark, gold_df, "gold_suite", "gold", run_id)
+        if not results["success"]:
+            any_failure = True
     except Exception as e:
         logger.warning("Gold layer non disponibile, skip: %s", str(e))
 
     logger.info("Generazione Data Docs")
     context.build_data_docs()
     logger.info("Data Docs generati in /app/great_expectations/data_docs")
+
+    if any_failure:
+        logger.error("Una o più validazioni sono fallite: uscita con errore")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

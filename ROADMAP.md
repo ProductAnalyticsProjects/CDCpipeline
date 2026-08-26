@@ -173,24 +173,53 @@ database `ecommerce`, il connector Debezium osserva `inventory.public.orders`, e
 compose non monta `init-db/` (quindi `ecommerce` non viene mai creato). Prima di
 aggiungere feature, la catena deve funzionare end-to-end.
 
-### 0.1 Un solo database di verità
+### 0.1 Un solo database di verità ✅ *fatto 26/08*
 
 - `ecommerce` come DB unico; `init-db/` montato su `/docker-entrypoint-initdb.d`
-- backend nel `docker-compose.yaml` con profilo `docker` (porta 8085 → allineata a `prometheus.yml`)
+  (reso idempotente con `\gexec` — con `POSTGRES_DB=ecommerce` l'immagine
+  ufficiale crea già il database da sola, uno `CREATE DATABASE` diretto
+  fallirebbe con "already exists")
+- backend nel `docker-compose.yaml` come servizio `ecommerce-backend`
+  (porta 8085 → allineata a `prometheus.yml`, che ora punta al nome del
+  servizio sulla rete Docker invece che a `host.docker.internal`)
 - connector Debezium puntato su `ecommerce`
 
-### 0.2 Connector Debezium hardened + config-as-code
+**Nota di migrazione**: chi ha già un volume `postgres_data` da prima di
+questa modifica deve fare `docker compose down -v` una volta — Postgres
+inizializza `POSTGRES_DB` solo su un data directory vuota, un volume
+esistente con `inventory` non si rinomina da solo.
 
-`debezium/connectors/orders.json` versionato, registrato via `PUT /connectors/<name>/config`
-(idempotente, a differenza dell'attuale `POST` che fallisce alla seconda esecuzione):
+**Verificato end-to-end** (non solo `docker compose config`): stack avviato
+per davvero, connector registrato, un insert e un delete su `orders` letti
+direttamente dal topic Kafka. Confermano sul campo i bug #1/#2/#3 sotto:
+`total_amount` arriva come bytes base64 (`"Bnwo"`), `created_at` come
+stringa ISO-8601, il delete produce un terzo messaggio tombstone (stessa
+chiave, valore `null`).
+
+### 0.2 Connector Debezium hardened + config-as-code ✅ *fatto 26/08*
+
+`debezium/connectors/orders.json` (config-as-code) + `scripts/register-debezium-connector.sh`
+(`PUT /connectors/<name>/config`, idempotente — il vecchio `debizium_api.bash`
+usava `POST`, che falliva con 409 al secondo tentativo). Rationale di ogni
+scelta in [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-connector-config.md):
 
 - `slot.name` / `publication.name` espliciti, `publication.autocreate.mode: filtered`
-- `snapshot.mode: initial` dichiarato (snapshot vs streaming diventa una scelta documentata, non un default implicito)
-- **`heartbeat.interval.ms`** — senza heartbeat, con DB idle il replication slot trattiene WAL fino a riempire il disco: l'incidente CDC più comune in produzione
-- `decimal.handling.mode: double`, `time.precision.mode` dichiarato
-- `tombstones.on.delete` scelto esplicitamente
+- `snapshot.mode: initial` dichiarato
+- **`heartbeat.interval.ms: 10000`** — senza heartbeat, con DB idle il replication slot trattiene WAL fino a riempire il disco: l'incidente CDC più comune in produzione
+- **`decimal.handling.mode: precise`** (deliberatamente NON `double`: un
+  amount monetario in floating-point introduce errori di arrotondamento
+  invisibili — la codifica precise-encoded corretta va decodificata in Spark,
+  è esattamente il bug #1 sotto, lasciato apposta alla logica applicativa)
+- `time.precision.mode` dichiarato
+- `tombstones.on.delete: true` dichiarato esplicitamente (il default, ma reso una scelta visibile)
 
 ### 0.3 Bug da correggere
+
+**#7, #8, #9, #10 fatti il 26/08** (impalcatura/config, vedi tabella sotto).
+**#1-#6 restano da fare — logica semantica, li scrive Pascal** (vedi
+"Modalità di lavoro" a inizio documento): sono confermati e riproducibili
+con i comandi in [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-connector-config.md)
+e nella verifica end-to-end sopra.
 
 | # | File | Problema |
 |---|---|---|
@@ -200,10 +229,10 @@ aggiungere feature, la catena deve funzionare end-to-end.
 | 4 | `spark_apps/cdc_silver.py:57` | `whenMatchedUpdateAll()` senza guardia di ordinamento: un update vecchio sovrascrive uno nuovo (sistematico durante i replay) |
 | 5 | `spark_apps/cdc_silver.py:65` | Delete in una seconda MERGE dopo gli upsert → la sequenza `d`→`c` nello stesso batch viene invertita |
 | 6 | `spark_apps/cdc_silver.py:94` | `user_df`/`item_df` letti da JDBC una volta all'avvio e cachati: enrichment permanentemente stale |
-| 7 | `common/outbox/OutboxService.java:31` | `outboxRepository.save(newEvent)` chiamato due volte |
-| 8 | `great_expectations/expectations/silver_orders_suite.json:20` | Attende `status` minuscolo, l'enum `OrderStatus` è maiuscolo → expectation sempre fallita |
-| 9 | `great_expectations/validate.py:60` | Su fallimento fa solo `logger.warning` ed esce con 0 → nessun quality gate: il task Airflow non fallisce mai |
-| 10 | `README.md` | Dichiara dashboard Grafana su consumer lag e batch duration; `prometheus.yml` scrapa solo l'actuator del backend e in git non esiste alcuna dashboard |
+| 7 ✅ | `common/outbox/OutboxService.java:31` | ~~`outboxRepository.save(newEvent)` chiamato due volte~~ — rimosso il duplicato |
+| 8 ✅ | `great_expectations/expectations/silver_orders_suite.json:20` | ~~Attende `status` minuscolo~~ — allineato ai 7 valori reali dell'enum `OrderStatus`, maiuscoli |
+| 9 ✅ | `great_expectations/validate.py:60` | ~~Nessun quality gate~~ — `sys.exit(1)` se una validazione fallisce davvero (non se il layer manca semplicemente) |
+| 10 ✅ | `README.md` | ~~Overclaim su dashboard Grafana~~ — sezione Observability riscritta per dire lo stato reale, rimandando il resto a Fase 7 |
 
 **Criterio di uscita:** `docker compose up` + `POST /api/orders` → riga in Bronze con
 importi e timestamp non-null, verificata da un test e2e in CI.
