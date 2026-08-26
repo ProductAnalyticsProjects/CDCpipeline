@@ -228,10 +228,21 @@ Prometheus scrapes metrics from the Spark JMX exporter and Kafka JMX. Grafana da
 | Trino | 435 |
 | dbt-trino | 1.7.0 |
 | Great Expectations | 0.18.19 |
-| MinIO | latest |
+| MinIO | RELEASE.2025-09-07T16-13-09Z |
+
+---
+
+## Contributi
+
+Il repo copre due parti distinte del sistema, scritte da persone diverse:
+
+| Area | Autore |
+|---|---|
+| `e-commerce/` (backend Spring Boot, frontend React) — l'app che genera gli eventi | [Alessio Novi](https://github.com/AlessioNovi) |
+| `spark_apps/`, `dbt_project/`, `trino/`, `great_expectations/`, `dags/`, `.github/` — la pipeline CDC che li consuma | [Pascal](https://github.com/Bolinmea) |
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE)

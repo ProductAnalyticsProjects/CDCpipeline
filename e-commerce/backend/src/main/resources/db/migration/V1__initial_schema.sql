@@ -35,7 +35,7 @@ CREATE TABLE stocks (
     reserved_quantity INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     CONSTRAINT uk_stock_product_warehouse UNIQUE (product_id, warehouse_id),
     CONSTRAINT chk_available_quantity CHECK (available_quantity >= 0),
     CONSTRAINT chk_reserved_quantity CHECK (reserved_quantity >= 0)
@@ -69,7 +69,7 @@ CREATE TABLE order_items (
     subtotal DECIMAL(19, 4) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    
+
     CONSTRAINT chk_quantity CHECK (quantity > 0)
 );
 
