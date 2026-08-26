@@ -147,13 +147,19 @@ Tre cose da correggere prima di eseguire lo script che hai già scritto:
    `minioadmin`, quindi innocuo — ma il controllo che avrebbe fermato uno vero
    non c'è).
 
-Quattro blocchi: `main` protetta e flusso PR (1h) · igiene della history —
-branch stale ✅ *fatto 26/08*, identità autore ✅ *fatto 26/08*, cleanup file
-di runtime in history ✅ *fatto 26/08* (740 blob / 562 MB sotto `data/`,
-`.git` 6 MB → 440 KB), LICENSE, `.gitattributes` (restano ~0.5h) · gate
-automatici — gitleaks, commitlint, hadolint, shellcheck, sqlfluff,
-dependabot, least-privilege sui workflow (1.5h) · versionamento e release
-con tag semver per fase (0.5h).
+✅ **Fase 0.5 chiusa il 26/08.** Quattro blocchi, tutti completati: `main`
+protetta e flusso PR (prima PR reale [#1](https://github.com/ProductAnalyticsProjects/CDCpipeline/pull/1),
+6 check verdi, squash merge) · igiene della history (branch stale, identità
+autore, cleanup `data/` — 740 blob / 562 MB, `.git` 6 MB → 440 KB — LICENSE,
+`.gitattributes`) · gate automatici (gitleaks, conventional-pre-commit,
+hadolint, shellcheck, sqlfluff, dependabot, least-privilege sui workflow) ·
+versionamento (`CHANGELOG.md` con sezione Unreleased; il tag `v0.1.0` arriva
+alla chiusura della Fase 0, non di questa fase di setup).
+
+Nel processo sono emersi e risolti 5 bug preesistenti (3 nella CI, mai
+diventati visibili prima perché nessun check era mai stato obbligatorio; 2
+nello script di branch protection stesso, mai eseguito con successo prima
+d'oggi). Dettaglio completo in [docs/git-workflow.md](docs/git-workflow.md).
 
 **Criterio di uscita:** la prima PR del progetto (quella della fase 0) mergiata
 con sei check verdi obbligatori e branch cancellato in automatico.

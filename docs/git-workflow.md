@@ -19,7 +19,14 @@ archiviato come tag `archive/dev` e cancellato dal remote; `main-PC6467` non
 è mai esistito su GitHub, resta solo locale. Il repo ha ora un solo branch
 remoto: `main`.
 
-Il resto di questo documento (Blocchi 1, 3, 4) descrive ancora lavoro da fare.
+**Aggiornamento 26 agosto 2026 (Blocchi 1, 3, 4 — chiusura Fase 0.5):**
+prima PR reale del progetto ([#1](https://github.com/ProductAnalyticsProjects/CDCpipeline/pull/1)) aperta, 6 check verificati verdi, mergiata via squash. Nel processo sono emersi e risolti 4 bug preesistenti scoperti proprio perché i check sono diventati un gate reale per la prima volta: `dbt-trino` richiede ora `user` anche con `method: none`; il filtro `--ignore` sul job unit test non escludeva due test marcati `@pytest.mark.integration` fuori dalla cartella dedicata; `bitnami/kafka:3.7` non esiste più su Docker Hub (Bitnami ha spostato le immagini gratuite su `bitnamilegacy/`); `delta-spark==4.0.0` risolve oggi `pyspark==4.2.0`, non più 4.0.0, creando un `ClassNotFoundException` con il connector Kafka pinnato a mano. Lo script `setup-branch-protection.sh` aveva un secondo bug oltre a quello già noto: usava `-f` (stringa) invece di `-F` (tipizzato) per campi boolean/integer, e l'API rispondeva 422 — corretto in una seconda PR ([#17](https://github.com/ProductAnalyticsProjects/CDCpipeline/pull/17)), la prima ad essere protetta dalla branch protection appena attivata.
+
+Branch protection ora attiva e verificata su `main`: 6 check obbligatori, `required_approving_review_count=0`, `enforce_admins=true`, `required_linear_history=true`, force-push e cancellazione branch disabilitati.
+
+Effetto collaterale notato: `dependabot.yml` ha aperto 15 PR immediatamente dopo il merge (una per dipendenza obsoleta su 6 ecosistemi) — tra queste due bump maggiori che richiedono review manuale, non auto-merge: Airflow 2.9.3→3.3.1 e Apache Spark 4.0.0→4.2.0 (quest'ultimo romperebbe l'invariante di coerenza versioni che la CI stessa verifica).
+
+Blocco 4 (versionamento): `CHANGELOG.md` creato con sezione `[Unreleased]`; il primo tag semver (`v0.1.0`) è previsto alla chiusura della Fase 0, non di questa fase di setup.
 
 ---
 
