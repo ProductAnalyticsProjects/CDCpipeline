@@ -13,6 +13,11 @@ on:
   pull_request:
     branches: [main, master]
 
+# Least privilege: nessun job qui pubblica pacchetti o scrive contenuti,
+# quindi il GITHUB_TOKEN di default non deve avere più di lettura.
+permissions:
+  contents: read
+
 # Se pushi due volte di fila sullo stesso branch/PR, annulla la run vecchia:
 # non ha senso pagare CI per commit già superati.
 concurrency:

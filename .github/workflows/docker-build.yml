@@ -23,6 +23,12 @@ on:
       - "requirements.txt"
       - "spark_apps/**"
 
+# Stesso motivo di ci.yml: un push successivo sullo stesso branch/PR rende
+# obsoleta la build in corso, niente da guadagnare a farla finire.
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   docker:
     name: Build Spark image

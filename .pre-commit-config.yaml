@@ -1,3 +1,5 @@
+default_install_hook_types: [pre-commit, commit-msg]
+
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -5,7 +7,10 @@ repos:
     -   id: trailing-whitespace
     -   id: end-of-file-fixer
     -   id: check-yaml
+    -   id: check-json
     -   id: check-added-large-files
+    -   id: check-merge-conflict
+    -   id: detect-private-key
 
 -   repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.11
@@ -15,3 +20,36 @@ repos:
         args: [ --fix ]
       # Formatter: replaces black
     -   id: ruff-format
+
+-   repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      # Secret scanning: il controllo che mancava quando MINIO_SECRET è
+      # finito hardcoded in history (vedi docs/git-workflow.md).
+    -   id: gitleaks
+
+-   repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      # Valida il messaggio di commit (feat:/fix:/chore:/docs:/refactor:),
+      # necessario per il CHANGELOG generato (vedi Blocco 4).
+    -   id: conventional-pre-commit
+        stages: [commit-msg]
+
+-   repo: https://github.com/hadolint/hadolint
+    rev: v2.13.1-beta
+    hooks:
+    -   id: hadolint-docker
+        files: ^(dockerfile|airflow/Dockerfile|e-commerce/backend/Dockerfile)$
+
+-   repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+    -   id: shellcheck
+
+-   repo: https://github.com/sqlfluff/sqlfluff
+    rev: 3.3.1
+    hooks:
+    -   id: sqlfluff-lint
+        files: ^dbt_project/models/
+        args: [--dialect, trino]
