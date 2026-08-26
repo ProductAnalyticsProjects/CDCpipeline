@@ -17,7 +17,7 @@
       "expectation_type": "expect_column_values_to_be_in_set",
       "kwargs": {
         "column": "status",
-        "value_set": ["pending", "completed", "cancelled", "processing"]
+        "value_set": ["PENDING", "PAID", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"]
       }
     },
     {
