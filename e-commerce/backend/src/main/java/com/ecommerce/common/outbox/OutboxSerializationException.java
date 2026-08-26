@@ -5,4 +5,3 @@ public class OutboxSerializationException extends RuntimeException {
         super(message, cause);
     }
 }
-

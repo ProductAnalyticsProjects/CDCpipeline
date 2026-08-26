@@ -1,0 +1,14 @@
+# Normalizzazione fine riga: checkout nativo, storage LF nel repo.
+* text=auto
+
+# Binari: mai diff testuale, mai normalizzazione dei fine riga.
+*.jar binary
+*.png binary
+*.jpg binary
+*.pdf binary
+
+# Il frontend (dipendenze/build) non è codice scritto a mano: non deve
+# contare nelle statistiche linguaggio di GitHub né negli assegnamenti
+# di code review basati su "chi ha toccato quale linguaggio".
+e-commerce/frontend/package-lock.json linguist-generated
+e-commerce/backend/gradle/wrapper/gradle-wrapper.jar linguist-vendored

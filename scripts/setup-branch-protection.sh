@@ -40,16 +40,28 @@ gh api \
   -f "required_status_checks[checks][][context]=Integration (Postgres + Kafka)" \
   -f "required_status_checks[checks][][context]=Airflow DAG integrity" \
   -F "enforce_admins=true" \
-  -f "required_pull_request_reviews[required_approving_review_count]=1" \
+  -f "required_pull_request_reviews[required_approving_review_count]=0" \
   -f "required_pull_request_reviews[dismiss_stale_reviews]=true" \
   -F "restrictions=null" \
   -F "allow_force_pushes=false" \
   -F "allow_deletions=false" \
-  -F "required_linear_history=false"
+  -F "required_linear_history=true"
+
+# required_approving_review_count=0: GitHub non permette di approvare la
+# propria PR, quindi su un repo a maintainer singolo un valore >=1 insieme a
+# enforce_admins=true rende il merge IMPOSSIBILE — nessuno può dare
+# l'approvazione richiesta e non c'è modo di scavalcare la regola. La
+# qualità qui la garantiscono i 6 check obbligatori, non una review.
+# Se e quando un secondo contributore è attivo sul repo, questo è il primo
+# valore da alzare a 1 (vedi docs/git-workflow.md).
+#
+# required_linear_history=true: coerente con lo squash merge come unica
+# opzione di merge (vedi docs/git-workflow.md, Blocco 1).
 
 echo "✅ Branch protection attiva su $BRANCH:"
 echo "   - 6 check richiesti verdi prima del merge"
-echo "   - 1 review approvata richiesta, review 'stale' scartate a nuovi commit"
+echo "   - review 'stale' scartate a nuovi commit (0 approvazioni richieste — vedi commento nello script)"
+echo "   - history lineare richiesta (coerente con squash merge)"
 echo "   - niente force-push, niente cancellazione del branch"
 echo "   - enforce_admins=true: la regola vale anche per te come admin del repo"
 echo

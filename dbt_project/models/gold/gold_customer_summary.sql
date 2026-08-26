@@ -1,7 +1,7 @@
 SELECT
     user_email,
     role,
-    COUNT(*)          AS total_orders,
+    COUNT(*) AS total_orders,
     SUM(total_amount) AS total_spent,
     AVG(total_amount) AS avg_order_value,
     MIN(CAST(FROM_UNIXTIME(created_at / 1000000) AS DATE)) AS first_order_date,

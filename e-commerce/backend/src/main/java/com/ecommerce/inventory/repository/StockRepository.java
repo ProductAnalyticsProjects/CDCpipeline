@@ -26,7 +26,7 @@ public interface StockRepository extends JpaRepository<Stock, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT s FROM Stock s WHERE s.product.id = :productId AND s.warehouse.id = :warehouseId")
     Optional<Stock> findByProductIdAndWarehouseIdWithLock(
-        @Param("productId") UUID productId, 
+        @Param("productId") UUID productId,
         @Param("warehouseId") UUID warehouseId
     );
 
