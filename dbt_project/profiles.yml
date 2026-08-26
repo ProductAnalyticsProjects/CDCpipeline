@@ -4,6 +4,7 @@ ecommerce_dbt:
     dev:
       type: trino
       method: none
+      user: dbt_local
       host: trino
       port: 8084
       database: delta
