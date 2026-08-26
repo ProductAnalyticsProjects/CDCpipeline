@@ -1,14 +1,16 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, current_timestamp, date_format, when
+from pyspark.sql.functions import from_json, col, current_timestamp, date_format, when, udf
 from pyspark.sql.types import (
     StructField,
     StructType,
     LongType,
-    DoubleType,
     StringType,
+    TimestampType,
+    DecimalType
 )
 import os
 import logging
+from spark_apps.bronze_transforms import convert_base_to_decimal
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -48,10 +50,10 @@ order_schema = StructType(
         StructField("id", StringType(), True),
         StructField("customer_email", StringType(), True),
         StructField("status", StringType(), True),
-        StructField("total_amount", DoubleType(), True),
+        StructField("total_amount", StringType(), True),
         StructField("notes", StringType(), True),
-        StructField("created_at", LongType(), True),
-        StructField("updated_at", LongType(), True),
+        StructField("created_at", TimestampType(), True),
+        StructField("updated_at", TimestampType(), True),
         StructField("version", LongType(), True),
         StructField("idempotency_key", StringType(), True),
     ]
@@ -86,6 +88,8 @@ debezium_schema = StructType(
     ]
 )
 
+converter_udf = udf(convert_base_to_decimal, returnType=DecimalType(19,4))
+
 bronze_df = (
     raw_df.selectExpr("CAST(value AS STRING)")
     .select(from_json(col("value"), debezium_schema).alias("debezium"))
@@ -98,6 +102,8 @@ bronze_df = (
     .select("data.*", "cdc_op")
     .withColumn("ingestion_timestamp", current_timestamp())
     .withColumn("ingestion_date", date_format(col("ingestion_timestamp"), "yyyy-MM-dd"))
+    .withColumn('total_amount_decoded', converter_udf(col("total_amount")))
+    .na.drop(subset="cdc_op")
 )
 
 try:
