@@ -69,9 +69,13 @@ jobs:
           python -m pip install --upgrade pip
           # I test unitari importano solo pyspark e delta.tables, NON
           # great-expectations/psycopg2 (che appesantirebbero e possono dare
-          # conflitti). Installiamo delta-spark (che tira pyspark 4.0, allineato
-          # a produzione) + le dev deps (pytest).
-          pip install "delta-spark==4.0.0" -r requirements-dev.txt
+          # conflitti). Installiamo delta-spark + le dev deps (pytest).
+          # pyspark pinnato esplicitamente: la dipendenza di delta-spark su
+          # pyspark non è stretta, quindi pip risolve qualunque versione più
+          # recente compatibile (visto in pratica: 4.2.0) — allineato a mano
+          # qui evita un ClassNotFoundException quando un altro jar (es. il
+          # connector Kafka nel job integration-test) è pinnato a 4.0.0.
+          pip install "delta-spark==4.0.0" "pyspark==4.0.0" -r requirements-dev.txt
 
       - name: Run pytest
         env:
@@ -244,7 +248,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "delta-spark==4.0.0" "kafka-python==2.0.*" -r requirements-dev.txt
+          # pyspark pinnato esplicitamente per lo stesso motivo del job `test`:
+          # senza, pip risolve una versione più recente di quella del connector
+          # Kafka pinnato in test_bronze_kafka_integration.py (4.0.0) →
+          # ClassNotFoundException per mismatch di API interna Spark.
+          pip install "delta-spark==4.0.0" "pyspark==4.0.0" "kafka-python==2.0.*" -r requirements-dev.txt
 
       - name: Wait for Kafka to accept connections
         run: |
