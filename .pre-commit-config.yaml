@@ -41,6 +41,14 @@ repos:
     hooks:
     -   id: hadolint-docker
         files: ^(dockerfile|airflow/Dockerfile|e-commerce/backend/Dockerfile)$
+        # DL3008 (pin le versioni apt): per un pacchetto di sistema singolo
+        # come `docker.io` in airflow/Dockerfile, fissare la versione esatta
+        # è più probabile che rompa la build al primo mirror update (Debian
+        # tiene in repo solo l'ultima versione) che garantire riproducibilità
+        # reale — scelta deliberata, non un'omissione.
+        # DL3066 (user-id non numerico): l'immagine base apache/airflow
+        # definisce l'utente `airflow` in modo standard, è solo informativo.
+        args: [--ignore=DL3008, --ignore=DL3066]
 
 -   repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
