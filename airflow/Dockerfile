@@ -14,7 +14,7 @@
 # in produzione si usa un executor remoto (KubernetesExecutor, CeleryExecutor
 # con worker dedicati) o un operator che parla con l'API Docker via TCP+TLS,
 # non il socket montato direttamente.
-FROM apache/airflow:2.9.3-python3.11
+FROM apache/airflow:3.3.1-python3.11
 
 USER root
 RUN apt-get update \
