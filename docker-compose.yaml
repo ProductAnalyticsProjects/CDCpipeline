@@ -12,8 +12,9 @@ services:
     command: ["postgres","-c", "wal_level=logical"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d inventory"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -84,6 +85,27 @@ services:
       - "5050:80"
     depends_on:
       - postgres
+    networks:
+      - pipeline
+
+  # L'app che genera gli eventi che la pipeline CDC cattura. Prima viveva
+  # fuori dal compose (avviata a mano da IDE/gradle sull'host) — dentro la
+  # rete `pipeline` così Debezium/Kafka/Prometheus la raggiungono per nome
+  # servizio invece che via host.docker.internal.
+  ecommerce-backend:
+    build:
+      context: ./e-commerce/backend
+    container_name: ecommerce_backend
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "8085:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - pipeline
 
