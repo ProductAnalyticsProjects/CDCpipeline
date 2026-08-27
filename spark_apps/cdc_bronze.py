@@ -1,12 +1,19 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, current_timestamp, date_format, when, udf
+from pyspark.sql.functions import (
+    from_json,
+    col,
+    current_timestamp,
+    date_format,
+    when,
+    udf,
+)
 from pyspark.sql.types import (
     StructField,
     StructType,
     LongType,
     StringType,
     TimestampType,
-    DecimalType
+    DecimalType,
 )
 import os
 import logging
@@ -88,7 +95,7 @@ debezium_schema = StructType(
     ]
 )
 
-converter_udf = udf(convert_base_to_decimal, returnType=DecimalType(19,4))
+converter_udf = udf(convert_base_to_decimal, returnType=DecimalType(19, 4))
 
 bronze_df = (
     raw_df.selectExpr("CAST(value AS STRING)")
@@ -102,7 +109,7 @@ bronze_df = (
     .select("data.*", "cdc_op")
     .withColumn("ingestion_timestamp", current_timestamp())
     .withColumn("ingestion_date", date_format(col("ingestion_timestamp"), "yyyy-MM-dd"))
-    .withColumn('total_amount_decoded', converter_udf(col("total_amount")))
+    .withColumn("total_amount_decoded", converter_udf(col("total_amount")))
     .na.drop(subset="cdc_op")
 )
 
