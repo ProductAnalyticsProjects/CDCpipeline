@@ -38,10 +38,10 @@ def create_spark_session(minio_endpoint, minio_access, minio_secret):
     return spark
 
 
-def make_process_batch(spark, user_df, item_df, bucket):
+def make_process_batch(spark, user_df, item_df, silver_base_path):
     def process_batch(batch_df, batch_id):
         logger.info("Elaborazione batch %s", batch_id)
-        silver_path = f"s3a://{bucket}/silver/orders"
+        silver_path = f"{silver_base_path}/silver/orders"
 
         upserts = batch_df.filter(col("cdc_op").isin("c", "u"))
         deletes = batch_df.filter(col("cdc_op") == "d")
@@ -54,10 +54,15 @@ def make_process_batch(spark, user_df, item_df, bucket):
 
         silver = DeltaTable.forPath(spark, silver_path)
 
+        cond = """
+            (s.updated_at < b.updated_at AND b.updated_at IS NOT NULL)
+                OR (s.version < b.version AND (b.updated_at IS NULL OR s.updated_at = b.updated_at))
+                OR (s.updated_at IS NULL AND b.updated_at IS NOT NULL)
+        """
         (
             silver.alias("s")
             .merge(enriched.alias("b"), "s.id = b.id")
-            .whenMatchedUpdateAll()
+            .whenMatchedUpdateAll(cond)
             .whenNotMatchedInsertAll()
             .execute()
         )
@@ -66,7 +71,7 @@ def make_process_batch(spark, user_df, item_df, bucket):
             (
                 silver.alias("s")
                 .merge(deletes.alias("b"), "s.id = b.id")
-                .whenMatchedDelete()
+                .whenMatchedDelete(cond)
                 .execute()
             )
 
@@ -86,6 +91,7 @@ def main():
         "password": os.environ["POSTGRES_PASSWORD"],
         "driver": "org.postgresql.Driver",
     }
+    SILVER_BASE_PATH = f"s3a://{BUCKET}"
 
     logger.info("Inizializzazione Spark session")
     spark = create_spark_session(MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET)
@@ -98,7 +104,6 @@ def main():
         .options(**POSTGRES_PROPERTIES)
         .load()
         .select("id", "email", "role", "created_at")
-        .cache()
     )
 
     logger.info("Lettura order items da Postgres")
@@ -111,10 +116,9 @@ def main():
         .groupBy("order_id")
         .count()
         .withColumnRenamed("count", "items_count")
-        .cache()
     )
 
-    process_batch = make_process_batch(spark, user_df, item_df, BUCKET)
+    process_batch = make_process_batch(spark, user_df, item_df, SILVER_BASE_PATH)
     bronze_stream = spark.readStream.format("delta").load(
         f"s3a://{BUCKET}/bronze/orders"
     )
