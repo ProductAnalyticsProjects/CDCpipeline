@@ -216,19 +216,29 @@ scelta in [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-conn
 ### 0.3 Bug da correggere
 
 **#7, #8, #9, #10 fatti il 26/08** (impalcatura/config, vedi tabella sotto).
-**#1-#6 restano da fare — logica semantica, li scrive Pascal** (vedi
-"Modalità di lavoro" a inizio documento): sono confermati e riproducibili
-con i comandi in [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-connector-config.md)
-e nella verifica end-to-end sopra.
+**#4, #5, #6 fatti — logica semantica, li ha scritti Pascal** (vedi
+"Modalità di lavoro" a inizio documento), riprodotti con test dedicati in
+[spark_apps/tests/test_silver_bugs.py](../spark_apps/tests/test_silver_bugs.py)
+e documentati in [ADR 002](adr/002-silver-merge-ordering-guard.md),
+[ADR 003](adr/003-silver-delete-ordering-guard.md) e
+[ADR 004](adr/004-silver-enrichment-cache-removal.md).
+**#1 e #3 risultano già fixati** in Bronze (verificato leggendo il codice —
+non risulta chi/quando, i commit non lo dicono esplicitamente). **#2 è
+solo a metà**: lo schema di Bronze è corretto, ma `gold_orders_daily.sql`
+non è stato aggiornato di conseguenza — vedi dettaglio nella riga sotto.
+Nota a margine: [test_bronze_kafka_integration.py](../spark_apps/tests/integration/test_bronze_kafka_integration.py)
+duplica uno schema Bronze ormai vecchio e usa dati sintetici semplificati
+(non base64/ISO-8601 realistici) — oggi nessun test copre la pipeline
+Kafka→Bronze reale con dati realistici.
 
 | # | File | Problema |
 |---|---|---|
-| 1 | `spark_apps/cdc_bronze.py:51` | `total_amount` è `DECIMAL(19,4)`: con `decimal.handling.mode` default (`precise`) Debezium lo serializza come bytes base64 → letto come `DoubleType` dà `null` |
-| 2 | `spark_apps/cdc_bronze.py:53` | `created_at`/`updated_at` sono `TIMESTAMPTZ` → Debezium emette stringa ISO-8601, lo schema dichiara `LongType` (→ `null`), e `gold_orders_daily.sql` assume microsecondi. Tre convenzioni incompatibili |
-| 3 | `spark_apps/cdc_bronze.py:89` | Tombstone non gestiti: `value=null` → `from_json` appende in Bronze una riga interamente `null` |
-| 4 | `spark_apps/cdc_silver.py:57` | `whenMatchedUpdateAll()` senza guardia di ordinamento: un update vecchio sovrascrive uno nuovo (sistematico durante i replay) |
-| 5 | `spark_apps/cdc_silver.py:65` | Delete in una seconda MERGE dopo gli upsert → la sequenza `d`→`c` nello stesso batch viene invertita |
-| 6 | `spark_apps/cdc_silver.py:94` | `user_df`/`item_df` letti da JDBC una volta all'avvio e cachati: enrichment permanentemente stale |
+| 1 ✅ | `spark_apps/cdc_bronze.py:51` | ~~`total_amount` è `DECIMAL(19,4)`: con `decimal.handling.mode` default (`precise`) Debezium lo serializza come bytes base64 → letto come `DoubleType` dà `null`~~ — `total_amount` resta `StringType`, nuova colonna `total_amount_decoded` via `convert_base_to_decimal`; coperto da [test_bronze_transforms.py](../spark_apps/tests/test_bronze_transforms.py) |
+| 2 | `spark_apps/cdc_bronze.py:53`, `dbt_project/models/gold/gold_orders_daily.sql:2` | Lato Bronze fixato (schema ora `TimestampType`, non più `LongType`). **Resta rotto lato Gold**: `gold_orders_daily.sql` fa ancora `FROM_UNIXTIME(created_at / 1000000)`, trattando `created_at` come epoch-microsecondi — non combacia più col `TIMESTAMP` vero che Bronze produce oggi |
+| 3 ✅ | `spark_apps/cdc_bronze.py:89` | ~~Tombstone non gestiti: `value=null` → `from_json` appende in Bronze una riga interamente `null`~~ — `.na.drop(subset="cdc_op")` elimina la riga tutta-null che il tombstone produce |
+| 4 ✅ | `spark_apps/cdc_silver.py:57` | ~~`whenMatchedUpdateAll()` senza guardia di ordinamento: un update vecchio sovrascrive uno nuovo~~ — guardia `updated_at`/`version` con fallback su pareggio ([ADR 002](adr/002-silver-merge-ordering-guard.md)) |
+| 5 ✅ | `spark_apps/cdc_silver.py:65` | ~~Delete in una seconda MERGE dopo gli upsert → la sequenza `d`→`c` nello stesso batch viene invertita~~ — stessa guardia anche sulla delete, ordine upsert-poi-delete invariato ([ADR 003](adr/003-silver-delete-ordering-guard.md)); limite residuo: 3+ eventi per id nello stesso batch (crash Delta, non più un dato sbagliato) |
+| 6 ✅ | `spark_apps/cdc_silver.py:94` | ~~`user_df`/`item_df` letti da JDBC una volta all'avvio e cachati: enrichment permanentemente stale~~ — rimosso `.cache()`, fix a effort minimo in attesa della dimension table di Fase 2 ([ADR 004](adr/004-silver-enrichment-cache-removal.md)) |
 | 7 ✅ | `common/outbox/OutboxService.java:31` | ~~`outboxRepository.save(newEvent)` chiamato due volte~~ — rimosso il duplicato |
 | 8 ✅ | `great_expectations/expectations/silver_orders_suite.json:20` | ~~Attende `status` minuscolo~~ — allineato ai 7 valori reali dell'enum `OrderStatus`, maiuscoli |
 | 9 ✅ | `great_expectations/validate.py:60` | ~~Nessun quality gate~~ — `sys.exit(1)` se una validazione fallisce davvero (non se il layer manca semplicemente) |
