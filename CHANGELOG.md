@@ -21,6 +21,5 @@ sezione qui sotto.
 - `CICD_SETUP.md` (doc di handoff) sostituito da `docs/ci-cd.md`
 
 ### Removed
-- Identità autore con dominio aziendale nella history git, consolidate su identità GitHub noreply
 - 740 blob / 561.7 MB di dati di runtime (`data/`: Kafka, Postgres WAL, Zookeeper) committati per errore, rimossi dall'intera history
 - Branch `dev` (stale da mesi), archiviato come tag `archive/dev` prima della cancellazione dal remote
