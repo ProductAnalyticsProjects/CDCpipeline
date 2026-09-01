@@ -222,19 +222,22 @@ scelta in [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-conn
 e documentati in [ADR 002](adr/002-silver-merge-ordering-guard.md),
 [ADR 003](adr/003-silver-delete-ordering-guard.md) e
 [ADR 004](adr/004-silver-enrichment-cache-removal.md).
-**#1 e #3 risultano già fixati** in Bronze (verificato leggendo il codice —
-non risulta chi/quando, i commit non lo dicono esplicitamente). **#2 è
-solo a metà**: lo schema di Bronze è corretto, ma `gold_orders_daily.sql`
-non è stato aggiornato di conseguenza — vedi dettaglio nella riga sotto.
-Nota a margine: [test_bronze_kafka_integration.py](../spark_apps/tests/integration/test_bronze_kafka_integration.py)
+**#1, #2, #3 fatti.** #1 e #3 risultavano già fixati in Bronze (verificato
+leggendo il codice — non risulta chi/quando, i commit non lo dicono
+esplicitamente). #2 richiedeva anche `trino/init.sql` (schema della tabella
+esterna, ridichiarato `TIMESTAMP(6)`) e due modelli Gold
+(`gold_orders_daily.sql`, `gold_customer_summary.sql`) — vedi dettaglio
+nella riga sotto.
+Nota a margine, ancora aperta: [test_bronze_kafka_integration.py](../spark_apps/tests/integration/test_bronze_kafka_integration.py)
 duplica uno schema Bronze ormai vecchio e usa dati sintetici semplificati
-(non base64/ISO-8601 realistici) — oggi nessun test copre la pipeline
-Kafka→Bronze reale con dati realistici.
+(non base64/ISO-8601 realistici) — non copre la pipeline Kafka→Bronze reale
+con dati realistici, ma il job `e2e-test` in CI ora copre lo stesso percorso
+end-to-end con dati veri.
 
 | # | File | Problema |
 |---|---|---|
 | 1 ✅ | `spark_apps/cdc_bronze.py:51` | ~~`total_amount` è `DECIMAL(19,4)`: con `decimal.handling.mode` default (`precise`) Debezium lo serializza come bytes base64 → letto come `DoubleType` dà `null`~~ — `total_amount` resta `StringType`, nuova colonna `total_amount_decoded` via `convert_base_to_decimal`; coperto da [test_bronze_transforms.py](../spark_apps/tests/test_bronze_transforms.py) |
-| 2 | `spark_apps/cdc_bronze.py:53`, `dbt_project/models/gold/gold_orders_daily.sql:2` | Lato Bronze fixato (schema ora `TimestampType`, non più `LongType`). **Resta rotto lato Gold**: `gold_orders_daily.sql` fa ancora `FROM_UNIXTIME(created_at / 1000000)`, trattando `created_at` come epoch-microsecondi — non combacia più col `TIMESTAMP` vero che Bronze produce oggi |
+| 2 ✅ | `spark_apps/cdc_bronze.py:53`, `trino/init.sql`, `dbt_project/models/gold/gold_orders_daily.sql`, `gold_customer_summary.sql` | ~~Lato Bronze `TimestampType` corretto, ma lo schema esterno Trino e i modelli Gold trattavano ancora `created_at` come epoch-microsecondi (`FROM_UNIXTIME(created_at / 1000000)`)~~ — `trino/init.sql` ridichiarato `TIMESTAMP(6)` (verificato con `DESCRIBE`/`SELECT` su Trino reale), Gold usa `CAST(created_at AS DATE)` diretto |
 | 3 ✅ | `spark_apps/cdc_bronze.py:89` | ~~Tombstone non gestiti: `value=null` → `from_json` appende in Bronze una riga interamente `null`~~ — `.na.drop(subset="cdc_op")` elimina la riga tutta-null che il tombstone produce |
 | 4 ✅ | `spark_apps/cdc_silver.py:57` | ~~`whenMatchedUpdateAll()` senza guardia di ordinamento: un update vecchio sovrascrive uno nuovo~~ — guardia `updated_at`/`version` con fallback su pareggio ([ADR 002](adr/002-silver-merge-ordering-guard.md)) |
 | 5 ✅ | `spark_apps/cdc_silver.py:65` | ~~Delete in una seconda MERGE dopo gli upsert → la sequenza `d`→`c` nello stesso batch viene invertita~~ — stessa guardia anche sulla delete, ordine upsert-poi-delete invariato ([ADR 003](adr/003-silver-delete-ordering-guard.md)); limite residuo: 3+ eventi per id nello stesso batch (crash Delta, non più un dato sbagliato) |
@@ -245,7 +248,13 @@ Kafka→Bronze reale con dati realistici.
 | 10 ✅ | `README.md` | ~~Overclaim su dashboard Grafana~~ — sezione Observability riscritta per dire lo stato reale, rimandando il resto a Fase 7 |
 
 **Criterio di uscita:** `docker compose up` + `POST /api/orders` → riga in Bronze con
-importi e timestamp non-null, verificata da un test e2e in CI.
+importi e timestamp non-null, verificata da un test e2e in CI. ✅ **Soddisfatto** —
+job `e2e-test` in `.github/workflows/ci.yml` (PR [#36](https://github.com/ProductAnalyticsProjects/CDCpipeline/pull/36)):
+stack Docker Compose completo, ordine reale via `POST /v1/orders`, verifica
+Bronze senza campi null. Nel percorso sono emersi e risolti altri due bug
+preesistenti, non nella lista sopra perché scoperti solo facendo girare lo
+stack per davvero in CI: credenziali Postgres/MinIO hardcoded nel connector
+Debezium e in `minio-init`, disallineate da `env.example`.
 
 ---
 
