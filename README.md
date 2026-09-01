@@ -23,6 +23,7 @@ flowchart TD
     DBT[dbt\nGold Models]
     GE[Great Expectations\nData Quality]
     MINIO[(MinIO\nS3-compatible)]
+    AIRFLOW[Airflow\nbatch orchestration]
     PROM[Prometheus]
     GRAF[Grafana]
 
@@ -41,6 +42,8 @@ flowchart TD
     BRONZE_DL --- MINIO
     SILVER_DL --- MINIO
     GOLD_DL --- MINIO
+    AIRFLOW -->|trigger| DBT
+    AIRFLOW -->|trigger| GE
     PROM -->|scrape| GRAF
 
     style BRONZE_DL fill:#cd7f32,color:#fff
@@ -86,35 +89,75 @@ Raw Parquet has no ACID guarantees: a failed Spark job can leave partial files w
 
 ```
 CDCpipeline/
-├── docker-compose.yaml          # Full local environment
-├── dockerfile                   # Custom Spark image with Delta + Kafka JARs
-├── requirements.txt             # Python dependencies (GE, delta-spark, psycopg2)
-├── debezium/connectors/          # Debezium connector config (config-as-code)
-├── scripts/register-debezium-connector.sh  # Registrazione idempotente (PUT)
-├── spark_apps/                  # PySpark streaming jobs
-│   ├── cdc_bronze.py            # Kafka → Delta Lake (Bronze)
-│   ├── cdc_silver.py            # Bronze → Silver with JDBC enrichment
-│   ├── silver_transforms.py     # Pure enrichment function (testable)
-│   └── tests/                   # Unit and integration tests
-├── great_expectations/          # Data quality
-│   ├── great_expectations.yml   # GE configuration
-│   ├── validate.py              # Validation script (Silver + Gold)
-│   └── expectations/            # Expectation suites (Silver, Gold)
-├── trino/                       # Trino query engine config
-│   ├── config.properties
-│   ├── node.properties
-│   ├── jvm.config
-│   ├── init.sql                 # Delta table registration
-│   └── catalog/delta.properties # Delta Lake connector
-├── dbt_project/                 # dbt Gold layer
-│   ├── profiles.yml             # Trino connection
+├── docker-compose.yaml            # Stack principale (Postgres, Kafka, Debezium, Spark, MinIO, Trino, dbt, GE, Prometheus, Grafana, backend e-commerce)
+├── docker-compose.airflow.yml     # Stack Airflow separato (webserver, scheduler, suo Postgres di metadati)
+├── docker-compose.ci.yml          # Override usato solo dal job e2e in CI (attiva il seed ADMIN del backend)
+├── dockerfile                     # Immagine Spark custom con JAR Delta + Kafka + hadoop-aws
+├── airflow/Dockerfile             # Immagine Airflow (requirements-airflow.txt)
+├── env.example                    # Template credenziali stack principale (env.airflow.example per Airflow)
+├── requirements*.txt              # runtime (GE, delta-spark, psycopg2) · dev (pytest, ruff, pre-commit) · airflow
+│
+├── spark_apps/                    # PySpark: streaming job e logica pura testabile
+│   ├── cdc_bronze.py              # Kafka → Delta Lake (Bronze)
+│   ├── cdc_silver.py              # Bronze → Silver, MERGE con guardie di ordinamento
+│   ├── bronze_transforms.py       # Decode base64→Decimal, timestamp, tombstone (funzioni pure)
+│   ├── silver_transforms.py       # Enrichment JDBC (funzione pura)
+│   ├── inspect_bronze.py          # Lettura ad hoc della tabella Bronze
+│   ├── spark_bronze.bash          # spark-submit dello stream Bronze
+│   ├── spark_silver.bash          # spark-submit dello stream Silver
+│   ├── maintenence/               # Delta VACUUM (vacuum.py + start_vacuum.bash)
+│   └── tests/                     # pytest: unit sui transforms + integration Kafka
+│
+├── dags/                          # Airflow
+│   ├── cdc_batch_pipeline.py      # dbt run/test + Great Expectations (NON lancia gli stream continui)
+│   ├── cdc_maintenance.py         # VACUUM settimanale, DAG separato dalla pipeline batch
+│   └── tests/test_dag_integrity.py
+│
+├── dbt_project/                   # Layer Gold via Trino
 │   ├── dbt_project.yml
-│   └── models/gold/             # Gold SQL models + schema tests
-├── init-db/                     # PostgreSQL init scripts
-├── prometheus/                  # Prometheus scrape configuration
-├── minio-policies/              # MinIO lifecycle policies
-└── .pre-commit-config.yaml      # Code quality hooks
+│   ├── profiles.yml               # Connessione Trino
+│   └── models/gold/               # gold_orders_daily · gold_orders_by_status · gold_customer_summary + schema.yml
+│
+├── great_expectations/            # Data quality
+│   ├── great_expectations.yml
+│   ├── validate.py                # Validazione Silver + Gold
+│   └── expectations/              # silver_orders_suite.json · gold_suite.json
+│
+├── trino/                         # config/node/jvm.properties, init.sql (registrazione tabelle Delta), catalog/delta.properties
+├── debezium/connectors/           # orders.json — config del connector (config-as-code)
+├── init-db/init.sql               # Creazione idempotente del DB `ecommerce` (wal_level=logical è nel compose)
+├── prometheus/prometheus.yml      # Target di scrape
+├── policies/                      # lakehouse_lifecycle.json — lifecycle del bucket MinIO
+│
+├── scripts/
+│   ├── register-debezium-connector.sh   # Registrazione idempotente del connector (PUT)
+│   ├── check_postgres_cdc_readiness.sh  # Pre-flight CDC (wal_level, init.sql, replication slot) — usato anche in CI
+│   ├── e2e/run_e2e_order_flow.sh        # Ordine reale via API → verifica della riga in Bronze
+│   ├── e2e/check_bronze_row.py          # Check della riga in Bronze, gira dentro spark-master
+│   ├── setup-branch-protection.sh       # Branch protection su main via API GitHub
+│   └── backup-local-untracked.sh        # Backup dei file locali non tracciati
+│
+├── e-commerce/                    # App sorgente degli eventi: backend Spring Boot + frontend React (vedi Contributi)
+│
+├── docs/
+│   ├── adr/                       # 001 config connector · 002/003 guardie di ordinamento su Silver · 004 rimozione cache enrichment
+│   ├── ci-cd.md                   # Come funziona la CI e come riprodurla in locale
+│   ├── git-workflow.md            # Branch, PR, conventional commit
+│   └── learning/                  # Note di studio (01-kafka-fundamentals.md)
+│
+├── .github/
+│   ├── workflows/ci.yml           # lint · pytest+Spark · dbt parse · compose & versioni · integration · e2e · DAG integrity
+│   ├── workflows/docker-build.yml # Build e push dell'immagine Spark su GHCR
+│   ├── dependabot.yml
+│   └── pull_request_template.md
+│
+├── ROADMAP.md                     # Fasi verso production-ready, con criteri di uscita
+├── CHANGELOG.md                   # Una sezione per fase chiusa
+└── .pre-commit-config.yaml        # gitleaks, ruff, hadolint, shellcheck, sqlfluff, conventional-pre-commit
 ```
+
+> `data/`, `test/` e `great_expectations/data_docs/` sono artefatti di runtime
+> locali: gitignorati, non fanno parte del repo.
 
 ---
 
@@ -132,7 +175,7 @@ CDCpipeline/
 ```bash
 git clone https://github.com/ProductAnalyticsProjects/CDCpipeline.git
 cd CDCpipeline
-cp .env.example .env          # edit credentials if needed
+cp env.example .env           # edit credentials if needed
 ```
 
 **2. Start all services**
@@ -155,13 +198,26 @@ bash scripts/register-debezium-connector.sh
 
 This registers the PostgreSQL connector (config in `debezium/connectors/orders.json` — see [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-connector-config.md) for the rationale behind each setting), which immediately begins capturing changes from the `public.orders` table. The script is idempotent — safe to re-run after changing the config.
 
-**4. Submit the Spark streaming job**
+**4. Submit the Spark streaming jobs**
+
+I due stream sono processi di lungo periodo: si avviano una volta e restano
+vivi dentro `spark-master` (per questo Airflow non li lancia — vedi
+`dags/cdc_batch_pipeline.py`).
 
 ```bash
-docker exec spark-master \
-  /opt/spark/bin/spark-submit \
-  --master spark://spark-master:7077 \
-  /opt/spark/apps/<your_job>.py
+docker compose exec -d spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/apps/cdc_bronze.py
+```
+
+```bash
+docker compose exec -d spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/apps/cdc_silver.py
+```
+
+Gli stessi comandi in versione foreground (utile per vedere i log dello
+stream) sono in `spark_apps/spark_bronze.bash` e `spark_apps/spark_silver.bash`,
+da lanciare dall'host. Verifica che entrambi siano attivi:
+
+```bash
+curl -s http://localhost:8081/json/ | jq -r '.activeapps[].name'
 ```
 
 **5. Run dbt transformations**
@@ -185,6 +241,9 @@ docker compose run --rm dbt test
 | Grafana | http://localhost:3000 | see `.env` |
 | Prometheus | http://localhost:9090 | — |
 | pgAdmin | http://localhost:5050 | see `.env` |
+| Backend e-commerce | http://localhost:8085 | — |
+| Airflow (stack separato) | http://localhost:8090 | see `env.airflow.example` |
+| PostgreSQL | `localhost:1900` | see `.env` |
 
 ---
 
@@ -218,7 +277,7 @@ by hand.
 
 - **Schema Registry not implemented**: Debezium currently serializes events as JSON. In production, Avro + Confluent Schema Registry (or Apicurio) would enforce schema contracts and reduce payload size.
 - **Single Spark worker**: Resource constraints for local dev. In production, the worker pool would scale horizontally.
-- **No CI/CD pipeline**: GitHub Actions workflow for linting, dbt tests, and Docker build validation is a planned addition.
+- **Airflow è uno stack separato**: `docker-compose.airflow.yml` va avviato a parte e orchestra solo il batch (dbt + GE + VACUUM); gli stream Spark restano processi di lungo periodo avviati a mano.
 - **Secret management**: Credentials are managed via `.env` file. Production deployments should use Docker Secrets, Vault, or a cloud KMS.
 
 ---
@@ -246,7 +305,7 @@ Il repo copre due parti distinte del sistema, scritte da persone diverse:
 | Area | Autore |
 |---|---|
 | `e-commerce/` (backend Spring Boot, frontend React) — l'app che genera gli eventi | [Alessio Novi](https://github.com/AlessioNovi) |
-| `spark_apps/`, `dbt_project/`, `trino/`, `great_expectations/`, `dags/`, `.github/` — la pipeline CDC che li consuma | [Pascal](https://github.com/Bolinmea) |
+| `spark_apps/`, `dbt_project/`, `trino/`, `great_expectations/`, `dags/`, `scripts/`, `docs/`, `.github/` — la pipeline CDC che li consuma | [Pascal](https://github.com/Bolinmea) |
 
 ---
 
