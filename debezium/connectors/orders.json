@@ -3,7 +3,7 @@
   "database.hostname": "postgres",
   "database.port": "5432",
   "database.user": "user",
-  "database.password": "password",
+  "database.password": "changeme",
   "database.dbname": "ecommerce",
   "topic.prefix": "fullfillment",
   "table.include.list": "public.orders",
