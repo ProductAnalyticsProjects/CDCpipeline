@@ -206,11 +206,6 @@ services:
       - ./dbt_project:/usr/app # I tuoi modelli, macro e profili dbt
     environment:
       - DBT_PROFILES_DIR=/usr/app
-      - DBT_POSTGRES_HOST=postgres
-      - DBT_POSTGRES_USER=${DBT_POSTGRES_USER}
-      - DBT_POSTGRES_PW=${POSTGRES_PASSWORD}
-      - DBT_POSTGRES_DB=${DBT_POSTGRES_DB}
-      - DBT_POSTGRES_SCHEMA=public
     profiles: [ "tools" ] # Opzionale: per non avviarlo sempre con 'up'
     networks:
       - pipeline
