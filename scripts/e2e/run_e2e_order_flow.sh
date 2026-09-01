@@ -93,5 +93,5 @@ fi
 log "✅ Ordine $ORDER_ID creato per $CUSTOMER_EMAIL"
 
 # Output macchina-leggibile per il passo successivo (lettura Bronze).
-jq -n --arg email "$CUSTOMER_EMAIL" --arg order_id "$ORDER_ID" \
+jq -nc --arg email "$CUSTOMER_EMAIL" --arg order_id "$ORDER_ID" \
   '{customer_email: $email, order_id: $order_id}'
