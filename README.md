@@ -1,44 +1,47 @@
 # CDC Pipeline — Real-Time Data Lakehouse
 
-A production-inspired **Change Data Capture** pipeline that streams PostgreSQL row-level changes into a Delta Lake lakehouse, with dbt transformations and full observability via Prometheus and Grafana.
+Una pipeline di **Change Data Capture** ispirata a un contesto di produzione:
+porta le modifiche riga per riga di PostgreSQL in un lakehouse Delta Lake,
+con trasformazioni dbt e osservabilità via Prometheus e Grafana.
 
-Built entirely with open-source tools and runs locally with a single `docker-compose up`.
+Costruita interamente con strumenti open source, girabile in locale con un
+solo `docker compose up`.
 
 ---
 
-## Architecture
+## Architettura
 
 ```mermaid
 flowchart TD
     PG[(PostgreSQL\nWAL)]
     DEB[Debezium CDC]
-    KAFKA[Apache Kafka\nKRaft mode]
+    KAFKA[Apache Kafka\nmodalità KRaft]
     BRONZE[Spark Structured Streaming\ncdc_bronze.py]
     SILVER[Spark Structured Streaming\ncdc_silver.py]
     JDBC[(Postgres\nusers · order_items)]
     BRONZE_DL[Delta Lake\nbronze/orders]
     SILVER_DL[Delta Lake\nsilver/orders]
     GOLD_DL[Delta Lake\ngold/]
-    TRINO[Trino\nQuery Engine]
-    DBT[dbt\nGold Models]
-    GE[Great Expectations\nData Quality]
+    TRINO[Trino\nmotore di query]
+    DBT[dbt\nmodelli Gold]
+    GE[Great Expectations\nqualità dei dati]
     MINIO[(MinIO\nS3-compatible)]
-    AIRFLOW[Airflow\nbatch orchestration]
+    AIRFLOW[Airflow\norchestrazione batch]
     PROM[Prometheus]
     GRAF[Grafana]
 
-    PG -->|WAL replication slot| DEB
-    DEB -->|JSON events| KAFKA
+    PG -->|replication slot WAL| DEB
+    DEB -->|eventi JSON| KAFKA
     KAFKA -->|readStream| BRONZE
     BRONZE -->|write Delta| BRONZE_DL
     BRONZE_DL -->|readStream| SILVER
-    JDBC -->|JDBC enrichment| SILVER
+    JDBC -->|enrichment JDBC| SILVER
     SILVER -->|MERGE upsert/delete| SILVER_DL
     SILVER_DL -->|read| TRINO
     TRINO -->|SQL| DBT
     DBT -->|write| GOLD_DL
-    SILVER_DL -->|validate| GE
-    GOLD_DL -->|validate| GE
+    SILVER_DL -->|valida| GE
+    GOLD_DL -->|valida| GE
     BRONZE_DL --- MINIO
     SILVER_DL --- MINIO
     GOLD_DL --- MINIO
@@ -52,40 +55,46 @@ flowchart TD
     style MINIO fill:#e8f4f8,color:#000
 ```
 
-### Medallion Architecture
+### Architettura Medallion
 
-| Layer | Path | Description |
+| Livello | Percorso | Descrizione |
 |---|---|---|
-| 🥉 Bronze | `s3a://lakehouse/bronze/orders` | Raw CDC events — immutable, append-only |
-| 🥈 Silver | `s3a://lakehouse/silver/orders` | Enriched and deduplicated via MERGE |
-| 🥇 Gold | `s3a://lakehouse/gold/` | Business aggregations built by dbt via Trino |
+| 🥉 Bronze | `s3a://lakehouse/bronze/orders` | Eventi CDC grezzi — immutabili, solo append |
+| 🥈 Silver | `s3a://lakehouse/silver/orders` | Arricchiti e deduplicati via MERGE |
+| 🥇 Gold | `s3a://lakehouse/gold/` | Aggregazioni di business costruite da dbt via Trino |
 
 ---
 
-## Stack & Design Choices
+## Stack e scelte di design
 
-| Component | Technology | Why |
+| Componente | Tecnologia | Perché |
 |---|---|---|
-| Source DB | PostgreSQL 16 | `wal_level=logical` enables native CDC via replication slots |
-| CDC | Debezium 2.5 | Zero-latency change capture directly from WAL — no polling, no DB load |
-| Message broker | Kafka 7.8 (KRaft) | Removes ZooKeeper dependency; standard in Kafka 3.x+ |
-| Stream processing | Spark 4.0 + Structured Streaming | Micro-batch with exactly-once semantics via Delta checkpointing |
-| Storage | Delta Lake 4.0 on MinIO | ACID transactions, time travel, schema evolution — S3-compatible locally |
-| Query engine | Trino 435 | Distributed SQL engine bridging dbt and Delta Lake on MinIO |
-| Transformations | dbt + dbt-trino | SQL-first, testable, version-controlled Gold models |
-| Data quality | Great Expectations 0.18 | Automated validation of Silver and Gold layers with Data Docs |
-| Observability | Prometheus + Grafana | Consumer lag, throughput, and pipeline health metrics |
-| Containerization | Docker Compose | Full local setup in one command |
+| DB sorgente | PostgreSQL 16 | `wal_level=logical` abilita il CDC nativo via replication slot |
+| CDC | Debezium 2.5 | Cattura delle modifiche direttamente dal WAL, senza latenza — nessun polling, nessun carico sul DB |
+| Message broker | Kafka 7.8 (KRaft) | Elimina la dipendenza da ZooKeeper; è lo standard da Kafka 3.x |
+| Stream processing | Spark 4.0 + Structured Streaming | Micro-batch con semantica exactly-once tramite i checkpoint Delta |
+| Storage | Delta Lake 4.0 su MinIO | Transazioni ACID, time travel, schema evolution — S3-compatible in locale |
+| Motore di query | Trino 435 | Motore SQL distribuito che fa da ponte tra dbt e Delta Lake su MinIO |
+| Trasformazioni | dbt + dbt-trino | SQL-first, testabile, modelli Gold sotto version control |
+| Qualità dei dati | Great Expectations 0.18 | Validazione automatica dei livelli Silver e Gold, con Data Docs |
+| Osservabilità | Prometheus + Grafana | Consumer lag, throughput e stato di salute della pipeline |
+| Containerizzazione | Docker Compose | Ambiente locale completo con un comando |
 
-**Why CDC instead of batch ETL?**
-Traditional ETL polls the source database on a schedule, introducing latency and DB load. Debezium reads the PostgreSQL Write-Ahead Log directly — the same mechanism used for replication — capturing every row change in real time with no impact on the source.
+**Perché CDC e non un ETL batch?**
+Un ETL tradizionale interroga il database sorgente a intervalli, introducendo
+latenza e carico sul DB. Debezium legge direttamente il Write-Ahead Log di
+PostgreSQL — lo stesso meccanismo usato dalla replica — catturando ogni
+modifica di riga in tempo reale, senza impatto sulla sorgente.
 
-**Why Delta Lake instead of raw Parquet?**
-Raw Parquet has no ACID guarantees: a failed Spark job can leave partial files with no way to roll back. Delta Lake wraps Parquet with a transaction log, giving us atomic writes, idempotent upserts (MERGE), and time travel for free.
+**Perché Delta Lake e non Parquet grezzo?**
+Il Parquet grezzo non dà garanzie ACID: un job Spark che fallisce lascia file
+parziali senza modo di tornare indietro. Delta Lake avvolge Parquet con un
+transaction log, e in cambio si ottengono scritture atomiche, upsert
+idempotenti (MERGE) e time travel.
 
 ---
 
-## Project Structure
+## Struttura del progetto
 
 ```
 CDCpipeline/
@@ -118,7 +127,7 @@ CDCpipeline/
 │   ├── profiles.yml               # Connessione Trino
 │   └── models/gold/               # gold_orders_daily · gold_orders_by_status · gold_customer_summary + schema.yml
 │
-├── great_expectations/            # Data quality
+├── great_expectations/            # Qualità dei dati
 │   ├── great_expectations.yml
 │   ├── validate.py                # Validazione Silver + Gold
 │   └── expectations/              # silver_orders_suite.json · gold_suite.json
@@ -161,44 +170,49 @@ CDCpipeline/
 
 ---
 
-## Prerequisites
+## Prerequisiti
 
-- Docker & Docker Compose v2
-- ~6 GB RAM available (Spark master + worker + Kafka + Postgres)
+- Docker e Docker Compose v2
+- ~6 GB di RAM disponibili (Spark master + worker + Kafka + Postgres)
 
 ---
 
-## Quickstart
+## Avvio rapido
 
-**1. Clone and configure environment**
+**1. Clona il repo e configura l'ambiente**
 
 ```bash
 git clone https://github.com/ProductAnalyticsProjects/CDCpipeline.git
 cd CDCpipeline
-cp env.example .env           # edit credentials if needed
+cp env.example .env           # modifica le credenziali se serve
 ```
 
-**2. Start all services**
+**2. Avvia i servizi**
 
 ```bash
 docker compose up -d
 ```
 
-Wait ~30 seconds for all healthchecks to pass, then verify:
+Aspetta ~30 secondi che tutti gli healthcheck passino, poi verifica:
 
 ```bash
-docker compose ps              # all services should show "healthy" or "running"
+docker compose ps              # tutti i servizi devono essere "healthy" o "running"
 ```
 
-**3. Register the Debezium connector**
+**3. Registra il connector Debezium**
 
 ```bash
 bash scripts/register-debezium-connector.sh
 ```
 
-This registers the PostgreSQL connector (config in `debezium/connectors/orders.json` — see [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-connector-config.md) for the rationale behind each setting), which immediately begins capturing changes from the `public.orders` table. The script is idempotent — safe to re-run after changing the config.
+Registra il connector PostgreSQL (config in `debezium/connectors/orders.json`
+— per il ragionamento dietro ogni singola impostazione vedi
+[docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-connector-config.md)),
+che inizia immediatamente a catturare le modifiche della tabella
+`public.orders`. Lo script è idempotente: si può rieseguire senza problemi
+dopo aver cambiato la config.
 
-**4. Submit the Spark streaming jobs**
+**4. Avvia gli stream Spark**
 
 I due stream sono processi di lungo periodo: si avviano una volta e restano
 vivi dentro `spark-master` (per questo Airflow non li lancia — vedi
@@ -220,7 +234,7 @@ da lanciare dall'host. Verifica che entrambi siano attivi:
 curl -s http://localhost:8081/json/ | jq -r '.activeapps[].name'
 ```
 
-**5. Run dbt transformations**
+**5. Esegui le trasformazioni dbt**
 
 ```bash
 docker compose run --rm dbt run
@@ -229,62 +243,62 @@ docker compose run --rm dbt test
 
 ---
 
-## Service URLs
+## URL dei servizi
 
-| Service | URL | Credentials |
+| Servizio | URL | Credenziali |
 |---|---|---|
 | Kafka UI | http://localhost:8080 | — |
 | Spark Master UI | http://localhost:8081 | — |
-| Debezium REST API | http://localhost:8083 | — |
+| API REST Debezium | http://localhost:8083 | — |
 | Trino | http://localhost:8084 | — |
-| MinIO Console | http://localhost:9001 | see `.env` |
-| Grafana | http://localhost:3000 | see `.env` |
+| Console MinIO | http://localhost:9001 | vedi `.env` |
+| Grafana | http://localhost:3000 | vedi `.env` |
 | Prometheus | http://localhost:9090 | — |
-| pgAdmin | http://localhost:5050 | see `.env` |
+| pgAdmin | http://localhost:5050 | vedi `.env` |
 | Backend e-commerce | http://localhost:8085 | — |
-| Airflow (stack separato) | http://localhost:8090 | see `env.airflow.example` |
-| PostgreSQL | `localhost:1900` | see `.env` |
+| Airflow (stack separato) | http://localhost:8090 | vedi `env.airflow.example` |
+| PostgreSQL | `localhost:1900` | vedi `.env` |
 
 ---
 
-## Data Flow in Detail
+## Il flusso dei dati in dettaglio
 
-1. **Postgres → Debezium**: WAL logical replication slot feeds row-level events (op: `c/u/d/r`) to Debezium
-2. **Debezium → Kafka**: Each table maps to a Kafka topic (`fullfillment.public.orders`)
-3. **Kafka → Spark**: Spark Structured Streaming reads from Kafka with `startingOffsets=earliest`, processes micro-batches
-4. **Spark → Delta Lake**: Writes to MinIO bucket `lakehouse/` using Delta format with checkpointing for fault tolerance
-5. **Delta → dbt**: dbt models query Delta tables and produce analytics-ready views back into Postgres (or the lakehouse)
-
----
-
-## Observability
-
-**Current state:** Prometheus scrapes only the e-commerce backend's Spring
-Actuator endpoint (`/api/actuator/prometheus`). Grafana is running but ships
-with no provisioned dashboards or datasource — it's an empty shell today,
-not a monitoring stack.
-
-**Planned** (see [ROADMAP.md](ROADMAP.md), Fase 7): Kafka consumer lag via
-kafka-exporter, Spark streaming batch duration/throughput via a
-`StreamingQueryListener`, and — the metric that matters most for a CDC
-pipeline — PostgreSQL replication slot lag (`pg_replication_slots`), plus
-Grafana dashboards and datasources committed as code, not clicked together
-by hand.
+1. **Postgres → Debezium**: un replication slot logico sul WAL alimenta Debezium con gli eventi riga per riga (op: `c/u/d/r`)
+2. **Debezium → Kafka**: ogni tabella finisce su un topic Kafka (`fullfillment.public.orders`)
+3. **Kafka → Spark**: Spark Structured Streaming legge da Kafka con `startingOffsets=earliest` ed elabora i micro-batch
+4. **Spark → Delta Lake**: scrive sul bucket MinIO `lakehouse/` in formato Delta, con checkpoint per la tolleranza ai guasti
+5. **Delta → dbt**: i modelli dbt interrogano le tabelle Delta e producono le viste pronte per l'analisi
 
 ---
 
-## Known Limitations & Future Work
+## Osservabilità
 
-- **Schema Registry not implemented**: Debezium currently serializes events as JSON. In production, Avro + Confluent Schema Registry (or Apicurio) would enforce schema contracts and reduce payload size.
-- **Single Spark worker**: Resource constraints for local dev. In production, the worker pool would scale horizontally.
+**Stato attuale:** Prometheus fa scrape del solo endpoint Spring Actuator del
+backend e-commerce (`/api/actuator/prometheus`). Grafana gira, ma senza
+dashboard né datasource provisionati: oggi è un guscio vuoto, non uno stack
+di monitoraggio.
+
+**Previsto** (vedi [ROADMAP.md](ROADMAP.md), Fase 7): consumer lag di Kafka
+via kafka-exporter, durata e throughput dei batch Spark via
+`StreamingQueryListener` e — la metrica che conta più di tutte per una
+pipeline CDC — il lag del replication slot di PostgreSQL
+(`pg_replication_slots`), più dashboard e datasource Grafana committati come
+codice, non montati a mano a colpi di click.
+
+---
+
+## Limiti noti e lavori futuri
+
+- **Schema Registry non implementato**: Debezium serializza gli eventi in JSON. In produzione, Avro + Confluent Schema Registry (o Apicurio) imporrebbero un contratto di schema e ridurrebbero la dimensione dei payload.
+- **Un solo Spark worker**: vincolo di risorse dell'ambiente locale. In produzione il pool di worker scalerebbe orizzontalmente.
 - **Airflow è uno stack separato**: `docker-compose.airflow.yml` va avviato a parte e orchestra solo il batch (dbt + GE + VACUUM); gli stream Spark restano processi di lungo periodo avviati a mano.
-- **Secret management**: Credentials are managed via `.env` file. Production deployments should use Docker Secrets, Vault, or a cloud KMS.
+- **Gestione dei secret**: le credenziali stanno in un file `.env`. Un deploy in produzione dovrebbe usare Docker Secrets, Vault o un KMS cloud.
 
 ---
 
-## Tech Versions
+## Versioni
 
-| Tool | Version |
+| Strumento | Versione |
 |---|---|
 | PostgreSQL | 16 |
 | Kafka (Confluent) | 7.8.3 |
@@ -309,6 +323,6 @@ Il repo copre due parti distinte del sistema, scritte da persone diverse:
 
 ---
 
-## License
+## Licenza
 
 [MIT](LICENSE)
