@@ -294,12 +294,17 @@ jobs:
       - name: Build immagini
         run: docker compose -f docker-compose.yaml -f docker-compose.ci.yml build ecommerce-backend spark-master spark-worker
 
-      # --wait blocca finché i servizi CON healthcheck (postgres, kafka, minio)
-      # non sono "healthy" — debezium ed ecommerce-backend non ne dichiarano
-      # uno nel compose, li aspettiamo esplicitamente subito dopo.
+      # NIENT'ALTRO CHE `up -d`: niente --wait. Compose rispetta comunque
+      # `depends_on: condition: service_healthy` da solo (postgres/kafka/minio
+      # partono nell'ordine giusto senza bisogno di --wait per quello) — ma
+      # --wait in più falliva l'intero comando appena un container "usa e
+      # getta" come minio-init usciva con successo (exit 0), perché lo tratta
+      # come segnale di instabilità a prescindere dal codice di uscita.
+      # Debezium ed ecommerce-backend non hanno un healthcheck dichiarato nel
+      # compose, li aspettiamo esplicitamente subito dopo.
       - name: Avvia lo stack
         run: |
-          docker compose -f docker-compose.yaml -f docker-compose.ci.yml up -d --wait --wait-timeout 180
+          docker compose -f docker-compose.yaml -f docker-compose.ci.yml up -d
 
       - name: Attendi Debezium Connect
         run: |
