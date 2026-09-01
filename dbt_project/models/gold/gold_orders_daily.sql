@@ -1,5 +1,5 @@
 SELECT
-    CAST(FROM_UNIXTIME(created_at / 1000000) AS DATE) AS order_date,
+    CAST(created_at AS DATE) AS order_date,
     COUNT(*) AS total_orders,
     SUM(total_amount) AS total_revenue,
     AVG(total_amount) AS avg_order_value

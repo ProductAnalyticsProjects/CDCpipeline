@@ -206,11 +206,6 @@ services:
       - ./dbt_project:/usr/app # I tuoi modelli, macro e profili dbt
     environment:
       - DBT_PROFILES_DIR=/usr/app
-      - DBT_POSTGRES_HOST=postgres
-      - DBT_POSTGRES_USER=${DBT_POSTGRES_USER}
-      - DBT_POSTGRES_PW=${POSTGRES_PASSWORD}
-      - DBT_POSTGRES_DB=${DBT_POSTGRES_DB}
-      - DBT_POSTGRES_SCHEMA=public
     profiles: [ "tools" ] # Opzionale: per non avviarlo sempre con 'up'
     networks:
       - pipeline
@@ -248,11 +243,11 @@ services:
       - ./minio-policies:/policies   # cartella con i tuoi JSON
     entrypoint: >
       /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin;
+        set -e;
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
         mc mb --ignore-existing local/lakehouse;
         mc mb --ignore-existing local/spark-checkpoints;
         mc ilm import local/lakehouse < /policies/lakehouse_lifecycle.json;
-        exit 0;
       "
     networks:
       - pipeline

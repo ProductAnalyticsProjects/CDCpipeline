@@ -6,13 +6,13 @@ CREATE TABLE IF NOT EXISTS delta.default.orders (
     status              VARCHAR,
     total_amount        DOUBLE,
     notes               VARCHAR,
-    created_at          BIGINT,
-    updated_at          BIGINT,
+    created_at          TIMESTAMP(6),
+    updated_at          TIMESTAMP(6),
     version             BIGINT,
     idempotency_key     VARCHAR,
     user_email          VARCHAR,
     role                VARCHAR,
-    user_registered_at  BIGINT,
+    user_registered_at  TIMESTAMP(6),
     items_count         BIGINT
 )
 WITH (

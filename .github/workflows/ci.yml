@@ -275,7 +275,109 @@ jobs:
           KAFKA_BOOTSTRAP_SERVERS: localhost:9092
         run: pytest spark_apps/tests/integration -v -m integration
 
-  # ── 6. INTEGRITÀ DAG AIRFLOW ─────────────────────────────────────────────────
+  # ── 6. E2E TEST (docker compose up completo) ─────────────────────────────────
+  # Criterio di uscita di Fase 0 (ROADMAP.md): `docker compose up` +
+  # `POST /api/orders` → riga in Bronze con importi e timestamp non-null.
+  # Diverso da `integration-test`: qui non ci sono service container che
+  # simulano pezzi dello stack, gira lo stack Docker Compose vero e proprio
+  # (Debezium, MinIO, backend, Spark bronze/silver) — il job più lento e
+  # pesante di questo file, per fedeltà al criterio scritto.
+  e2e-test:
+    name: E2E (docker compose up)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepara .env
+        run: cp env.example .env
+
+      - name: Build immagini
+        run: docker compose -f docker-compose.yaml -f docker-compose.ci.yml build ecommerce-backend spark-master spark-worker
+
+      # NIENT'ALTRO CHE `up -d`: niente --wait. Compose rispetta comunque
+      # `depends_on: condition: service_healthy` da solo (postgres/kafka/minio
+      # partono nell'ordine giusto senza bisogno di --wait per quello) — ma
+      # --wait in più falliva l'intero comando appena un container "usa e
+      # getta" come minio-init usciva con successo (exit 0), perché lo tratta
+      # come segnale di instabilità a prescindere dal codice di uscita.
+      # Debezium ed ecommerce-backend non hanno un healthcheck dichiarato nel
+      # compose, li aspettiamo esplicitamente subito dopo.
+      - name: Avvia lo stack
+        run: |
+          docker compose -f docker-compose.yaml -f docker-compose.ci.yml up -d
+
+      - name: Attendi Debezium Connect
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8083/connectors > /dev/null && exit 0
+            sleep 2
+          done
+          echo "::error::Debezium Connect non ha risposto in tempo"
+          docker compose logs debezium
+          exit 1
+
+      - name: Attendi il backend (actuator health)
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8085/api/actuator/health | grep -q '"status":"UP"' && exit 0
+            sleep 2
+          done
+          echo "::error::Il backend non è diventato UP in tempo"
+          docker compose logs ecommerce-backend
+          exit 1
+
+      - name: Registra il connector Debezium
+        run: bash scripts/register-debezium-connector.sh
+
+      - name: Avvia gli stream Spark bronze e silver (detached, sono continui)
+        run: |
+          docker compose exec -d spark-master sh -c \
+            "/opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/apps/cdc_bronze.py > /opt/spark/work-dir/bronze.log 2>&1"
+          docker compose exec -d spark-master sh -c \
+            "/opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/apps/cdc_silver.py > /opt/spark/work-dir/silver.log 2>&1"
+
+      - name: Attendi che gli stream compaiano attivi sullo Spark master
+        # Stessa API REST usata da check_streaming_alive in dags/cdc_batch_pipeline.py.
+        run: |
+          for i in $(seq 1 30); do
+            apps=$(curl -sf http://localhost:8081/json/ | jq -r '.activeapps[].name' 2>/dev/null || true)
+            echo "$apps" | grep -q "CDC_bronze" && echo "$apps" | grep -q "CDC_silver" && exit 0
+            sleep 3
+          done
+          echo "::error::CDC_bronze/CDC_silver non risultano attivi sullo Spark master"
+          docker compose exec -T spark-master cat /opt/spark/work-dir/bronze.log || true
+          docker compose exec -T spark-master cat /opt/spark/work-dir/silver.log || true
+          exit 1
+
+      - name: Genera un ordine reale via API
+        id: order
+        run: |
+          output=$(bash scripts/e2e/run_e2e_order_flow.sh)
+          echo "$output"
+          email=$(echo "$output" | tail -1 | jq -r '.customer_email')
+          echo "customer_email=$email" >> "$GITHUB_OUTPUT"
+
+      - name: "Verifica la riga in Bronze (con retry: la scrittura è asincrona)"
+        run: |
+          docker compose cp scripts/e2e/check_bronze_row.py spark-master:/tmp/check_bronze_row.py
+          for i in $(seq 1 20); do
+            if docker compose exec -T spark-master python3 /tmp/check_bronze_row.py --email "${{ steps.order.outputs.customer_email }}"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::La riga non è mai arrivata in Bronze senza campi null"
+          exit 1
+
+      - name: Log dei servizi (sempre, utile in caso di fallimento)
+        if: always()
+        run: docker compose -f docker-compose.yaml -f docker-compose.ci.yml logs --tail=100
+
+      - name: Spegni lo stack
+        if: always()
+        run: docker compose -f docker-compose.yaml -f docker-compose.ci.yml down -v
+
+  # ── 7. INTEGRITÀ DAG AIRFLOW ─────────────────────────────────────────────────
   # DagBag importa tutti i file in dags/ come farebbe lo scheduler Airflow.
   # Non serve un cluster Airflow acceso: intercetta errori di import, cicli
   # nel grafo, default_args mancanti (owner/retries), catchup non esplicito.
