@@ -25,6 +25,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── 0. RILEVAMENTO PATH ──────────────────────────────────────────────────────
+  # Serve solo a decidere se il job e2e-test (il più lento, ~9 minuti: build
+  # immagini + docker compose up completo) vale la pena farlo girare. Gli altri
+  # job restano SEMPRE attivi (durano insieme meno di 2 minuti in totale) —
+  # niente `paths-ignore` a livello di workflow: su un repo con check
+  # obbligatori in branch protection, un workflow che non parte affatto per un
+  # commit lascia quel check "mai arrivato", non "passato", e la PR resta
+  # bloccata in attesa. Un job che parte e si salta con `if:` invece riporta
+  # comunque uno stato ("skipped"), che la protezione del branch accetta.
+  changes:
+    name: Rileva se serve il job e2e
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # "code" è vero se cambia qualunque file che NON sia .md o dentro
+          # docs/ — cioè: fai girare e2e-test a meno che il cambio non sia
+          # solo documentazione.
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!docs/**'
+
   # ── 1. LINT + FORMAT ────────────────────────────────────────────────────────
   # Riusiamo il TUO .pre-commit-config.yaml: la CI esegue esattamente gli stessi
   # hook che giri in locale (ruff + ruff-format). Un'unica fonte di verità:
@@ -284,6 +311,8 @@ jobs:
   # pesante di questo file, per fedeltà al criterio scritto.
   e2e-test:
     name: E2E (docker compose up)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
