@@ -1,0 +1,14 @@
+# Override usato SOLO dal job e2e-test in CI (docker compose -f
+# docker-compose.yaml -f docker-compose.ci.yml up).
+#
+# DataInitializer (e-commerce/backend/.../common/config/DataInitializer.java)
+# seeda un utente ADMIN di default, ma è vincolato a @Profile({"local","dev"}).
+# Il profilo di produzione del compose è solo "docker" — nessun admin, quindi
+# nessun modo di creare prodotti/inventory (richiedono ADMIN) prima di poter
+# creare un ordine. Aggiungere "local" al profilo attivo SOLO per la CI attiva
+# il seed, senza toccare docker-compose.yaml (che resta valido per uso locale
+# reale, dove il profilo "docker" da solo è la scelta giusta).
+services:
+  ecommerce-backend:
+    environment:
+      SPRING_PROFILES_ACTIVE: docker,local
