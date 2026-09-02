@@ -11,6 +11,7 @@ e-commerce/backend/build
 test
 .vscode
 docs/learning-log.md
+ROADMAP.md
 
 e-commerce/frontend/node_modules
 
@@ -23,7 +24,6 @@ e-commerce/frontend/node_modules
 .env
 
 # Python
-__pycache__/
 *.pyc
 *.pyo
 
@@ -32,3 +32,8 @@ data/
 
 # great_expectation
 data_docs/
+
+# Cache
+.pytest_cache
+.ruff_cache
+__pycache__/
