@@ -11,6 +11,6 @@
 # il comando `pip install`; ora vale anche con un semplice
 # `pip install -r requirements-dev.txt` in locale.
 
-pytest==8.3.*
+pytest==9.1.*
 pre-commit==4.*
 pyspark==4.0.0
