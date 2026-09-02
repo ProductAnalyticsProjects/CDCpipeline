@@ -47,7 +47,7 @@ jobs:
       # Le PR da fork non hanno accesso ai secret: il login le farebbe fallire.
       - name: Log in to GHCR
         if: github.event_name == 'push'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
