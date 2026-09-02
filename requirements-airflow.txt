@@ -6,4 +6,4 @@
 # Niente providers extra (docker/postgres/kafka): i DAG usano solo BashOperator
 # e PythonOperator + requests (già incluso nel core di Airflow) per parlare
 # con la REST API di Spark Master e con Docker via CLI — non serve altro.
-apache-airflow==2.9.3
+apache-airflow==3.3.1
