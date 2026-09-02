@@ -41,7 +41,7 @@ jobs:
 
       # Buildx abilita cache avanzata e build più veloci.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Login al registry SOLO quando pushiamo davvero (push su main, non PR).
       # Le PR da fork non hanno accesso ai secret: il login le farebbe fallire.
