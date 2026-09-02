@@ -8,7 +8,19 @@ memoria — utile e veloce, ma non tocca mai Kafka, quindi non avrebbe MAI
 intercettato il bug storico di questo progetto (`debezium_schema` definito
 ma mai usato, messaggi letti con lo schema sbagliato → bronze pieno di null).
 Questo test produce un messaggio reale sul broker e lo fa leggere a Spark
-esattamente come farebbe cdc_bronze.py in produzione.
+esattamente come farebbe cdc_bronze.py in produzione — stessa funzione
+(`build_bronze_df`, importata da `spark_apps.bronze_transforms` invece di
+duplicare lo schema: prima della Fase 1 questo file teneva una copia propria
+di `order_schema`/`debezium_schema`, che poteva disallinearsi in silenzio da
+quella reale — vedi ROADMAP.md, Fase 1).
+
+`total_amount` è codificato in base64 (stesso formato reale osservato su
+Kafka, non un `DoubleType` semplificato) e `created_at`/`updated_at` sono
+stringhe ISO-8601 con offset, come le produce davvero Debezium con
+`time.precision.mode: adaptive_time_microseconds` su una colonna TIMESTAMPTZ
+— prima di questo file i dati sintetici non erano realistici (vedi
+ROADMAP.md, nota a margine Fase 0.3): la conversione base64→decimal e il
+parsing timestamp non venivano quindi mai esercitati da questo test.
 
 Cartella separata (tests/integration/, non tests/) apposta: il job `test`
 (unit, veloce, gira su ogni push) esclude questa cartella con
@@ -16,54 +28,31 @@ Cartella separata (tests/integration/, non tests/) apposta: il job `test`
 (più lento, richiede i service container) la esegue.
 """
 
+import base64
 import json
 import os
+from decimal import Decimal
 
 import pytest
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json, when
-from pyspark.sql.types import DoubleType, LongType, StringType, StructField, StructType
+
+from spark_apps.bronze_transforms import ORDER_ROW_SCHEMA, build_bronze_df
 
 pytestmark = pytest.mark.integration
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 TOPIC = "fullfillment.public.orders"
 
-# Stesso schema di spark_apps/cdc_bronze.py — duplicato qui perché
-# cdc_bronze.py non espone una funzione importabile per costruirlo (è tutto
-# a livello di modulo, eseguito su import). Se in futuro estrai la logica di
-# parsing in una funzione tipo `build_bronze_df(raw_df)` come già fatto per
-# la silver (`make_process_batch`), questo test potrebbe importarla invece
-# di duplicare lo schema — più sicuro, zero rischio di disallineamento.
-order_schema = StructType(
-    [
-        StructField("id", StringType(), True),
-        StructField("customer_email", StringType(), True),
-        StructField("status", StringType(), True),
-        StructField("total_amount", DoubleType(), True),
-        StructField("notes", StringType(), True),
-        StructField("created_at", LongType(), True),
-        StructField("updated_at", LongType(), True),
-        StructField("version", LongType(), True),
-        StructField("idempotency_key", StringType(), True),
-    ]
-)
 
-debezium_schema = StructType(
-    [
-        StructField(
-            "payload",
-            StructType(
-                [
-                    StructField("before", order_schema, True),
-                    StructField("after", order_schema, True),
-                    StructField("op", StringType(), True),
-                ]
-            ),
-            True,
-        )
-    ]
-)
+def _encode_decimal(value: str, scale: int = 4) -> str:
+    """Stesso formato di Debezium con decimal.handling.mode=precise: bytes
+    big-endian, complemento a due, poi base64. Vedi
+    spark_apps/tests/test_bronze_transforms.py per il valore noto 'Bnwo'."""
+    unscaled = int(Decimal(value).scaleb(scale))
+    length = max(1, (unscaled.bit_length() + 8) // 8)
+    return base64.b64encode(
+        unscaled.to_bytes(length, byteorder="big", signed=True)
+    ).decode()
 
 
 @pytest.fixture(scope="module")
@@ -96,20 +85,22 @@ def _produce_debezium_message(op: str, after: dict | None, before: dict | None =
 
 
 def test_insert_envelope_is_parsed_correctly(spark):
-    """Riproduce esattamente il bug storico: se il parsing usasse
-    `order_schema` invece di `debezium_schema` per leggere il messaggio
-    grezzo, `data.*` non esisterebbe nel JSON risultante e le colonne
-    sarebbero tutte null. Questo test fallisce in quel caso."""
+    """Riproduce esattamente il bug storico: se il parsing usasse lo schema
+    della riga invece dell'envelope Debezium completo per leggere il
+    messaggio grezzo, `data.*` non esisterebbe nel JSON risultante e le
+    colonne sarebbero tutte null. Questo test fallisce in quel caso — e con
+    dati realistici (base64/ISO-8601) esercita anche la stessa decodifica
+    che gira in produzione."""
     _produce_debezium_message(
         op="c",
         after={
             "id": "order-1",
             "customer_email": "test@example.com",
             "status": "PENDING",
-            "total_amount": 42.5,
+            "total_amount": _encode_decimal("42.50"),
             "notes": None,
-            "created_at": 1700000000000,
-            "updated_at": 1700000000000,
+            "created_at": "2024-01-15T10:30:00Z",
+            "updated_at": "2024-01-15T10:30:00Z",
             "version": 1,
             "idempotency_key": "abc-123",
         },
@@ -124,18 +115,8 @@ def test_insert_envelope_is_parsed_correctly(spark):
         .load()
     )
 
-    # Stessa trasformazione di cdc_bronze.py: from_json con debezium_schema,
-    # poi before/after selezionato in base a cdc_op.
-    bronze_df = (
-        raw_df.selectExpr("CAST(value AS STRING)")
-        .select(from_json(col("value"), debezium_schema).alias("debezium"))
-        .select(
-            when(col("debezium.payload.op") == "d", col("debezium.payload.before"))
-            .otherwise(col("debezium.payload.after"))
-            .alias("data"),
-            col("debezium.payload.op").alias("cdc_op"),
-        )
-        .select("data.*", "cdc_op")
+    bronze_df = build_bronze_df(
+        raw_df, ORDER_ROW_SCHEMA, decimal_columns={"total_amount": 4}
     )
 
     rows = bronze_df.collect()
@@ -146,7 +127,9 @@ def test_insert_envelope_is_parsed_correctly(spark):
     assert row["id"] == "order-1"
     assert row["customer_email"] == "test@example.com"
     assert row["status"] == "PENDING"
-    assert row["total_amount"] == 42.5
     # La regressione storica produceva null qui perché il parsing bypassava
     # l'envelope: questa asserzione è il cuore del test.
     assert row["id"] is not None
+    assert row["total_amount_decoded"] == Decimal("42.5000")
+    assert row["created_at"] is not None
+    assert row["source_lsn"] is None  # non impostato in questo messaggio sintetico

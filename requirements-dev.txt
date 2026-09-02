@@ -2,8 +2,15 @@
 # Tenerle separate da requirements.txt evita di gonfiare l'immagine Docker
 # di produzione con pytest & co.
 #
-# pyspark NON è qui: arriva già come dipendenza di delta-spark==4.0.0
-# (definito in requirements.txt), quindi la versione resta allineata.
+# pyspark pinnato esplicitamente: la dipendenza di delta-spark su pyspark
+# non è stretta, quindi senza questo pin pip risolve una versione più
+# recente (visto in pratica: 4.1.x/4.2.0) — che poi confligge con jar
+# pinnati a 4.0.0 altrove (es. il connector Kafka in
+# spark_apps/tests/integration/test_bronze_kafka_integration.py) con un
+# ClassNotFoundException a runtime. La CI applicava questo pin solo dentro
+# il comando `pip install`; ora vale anche con un semplice
+# `pip install -r requirements-dev.txt` in locale.
 
 pytest==8.3.*
 pre-commit==4.*
+pyspark==4.0.0
