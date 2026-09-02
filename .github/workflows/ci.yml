@@ -97,12 +97,12 @@ jobs:
           # I test unitari importano solo pyspark e delta.tables, NON
           # great-expectations/psycopg2 (che appesantirebbero e possono dare
           # conflitti). Installiamo delta-spark + le dev deps (pytest).
-          # pyspark pinnato esplicitamente: la dipendenza di delta-spark su
-          # pyspark non è stretta, quindi pip risolve qualunque versione più
-          # recente compatibile (visto in pratica: 4.2.0) — allineato a mano
-          # qui evita un ClassNotFoundException quando un altro jar (es. il
-          # connector Kafka nel job integration-test) è pinnato a 4.0.0.
-          pip install "delta-spark==4.0.0" "pyspark==4.0.0" -r requirements-dev.txt
+          # pyspark==4.0.0 è pinnato in requirements-dev.txt (non qui): senza
+          # quel pin pip risolverebbe una versione più recente compatibile
+          # con delta-spark (visto in pratica: 4.2.0), in conflitto con jar
+          # pinnati a 4.0.0 altrove (es. il connector Kafka nel job
+          # integration-test) → ClassNotFoundException a runtime.
+          pip install "delta-spark==4.0.0" -r requirements-dev.txt
 
       - name: Run pytest
         env:
@@ -275,11 +275,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # pyspark pinnato esplicitamente per lo stesso motivo del job `test`:
-          # senza, pip risolve una versione più recente di quella del connector
-          # Kafka pinnato in test_bronze_kafka_integration.py (4.0.0) →
-          # ClassNotFoundException per mismatch di API interna Spark.
-          pip install "delta-spark==4.0.0" "pyspark==4.0.0" "kafka-python==2.0.*" -r requirements-dev.txt
+          # pyspark==4.0.0 è pinnato in requirements-dev.txt (non qui), per lo
+          # stesso motivo del job `test`: senza, pip risolverebbe una versione
+          # più recente di quella del connector Kafka pinnato in
+          # test_bronze_kafka_integration.py (4.0.0) → ClassNotFoundException
+          # per mismatch di API interna Spark.
+          pip install "delta-spark==4.0.0" "kafka-python==2.0.*" -r requirements-dev.txt
 
       - name: Wait for Kafka to accept connections
         run: |

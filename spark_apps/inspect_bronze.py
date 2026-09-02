@@ -1,8 +1,11 @@
+import os
+
 from pyspark.sql import SparkSession
 
-MINIO_ENDPOINT = "http://minio:9000"
-MINIO_ACCESS = "minioadmin"
-MINIO_SECRET = "minioadmin"
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
+MINIO_ACCESS = os.environ["MINIO_ACCESS_KEY"]
+MINIO_SECRET = os.environ["MINIO_SECRET_KEY"]
+BRONZE_TABLE = os.environ.get("BRONZE_TABLE", "orders")
 
 spark = (
     SparkSession.builder.appName("inspect_bronze")
@@ -24,17 +27,20 @@ spark = (
     .getOrCreate()
 )
 
-bronze_df = spark.read.format("delta").load("s3a://lakehouse/bronze/orders")
+bronze_df = spark.read.format("delta").load(f"s3a://lakehouse/bronze/{BRONZE_TABLE}")
 
 bronze_df.printSchema()
 bronze_df.show(truncate=False)
 
-bronze_df.createOrReplaceTempView("bronze_orders")
+bronze_df.createOrReplaceTempView("bronze_table")
 
-result = spark.sql("""
-    SELECT ingestion_date, cdc_op, COUNT(*) as record_count
-    FROM bronze_orders
-    GROUP BY ingestion_date, cdc_op
+# outbox_events (post-EventRouter) non ha cdc_op, ha event_type — vedi
+# build_bronze_outbox_df in spark_apps/bronze_transforms.py.
+group_column = "event_type" if BRONZE_TABLE == "outbox_events" else "cdc_op"
+result = spark.sql(f"""
+    SELECT ingestion_date, {group_column}, COUNT(*) as record_count
+    FROM bronze_table
+    GROUP BY ingestion_date, {group_column}
     ORDER BY ingestion_date DESC
 """)
 result.show()

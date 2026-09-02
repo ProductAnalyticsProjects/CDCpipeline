@@ -24,6 +24,47 @@ Template per una nuova voce:
 
 ---
 
+## 2026-09-02 — EventRouter di Debezium: il task può morire mentre il connector dice RUNNING
+
+**Non funzionava:** Il connector Debezium risultava `connector.state:
+"RUNNING"`, ma sul topic `outbox.event.Order` non arrivava mai nessun
+messaggio — nonostante una riga vera fosse già presente in `outbox_events`
+(verificato con una query diretta su Postgres) e la config del connector,
+riletta via API, fosse esattamente quella prevista.
+
+**Ho provato:** Prima di guardare i log ho controllato config e stato via
+REST API (`/connectors/.../config`, `/connectors/.../status`) — tutto
+sembrava a posto. Solo leggendo `docker compose logs debezium` è saltato
+fuori l'errore vero: `tasks[0].state: "FAILED"`, un'eccezione mai propagata
+allo stato di primo livello del connector.
+
+**Perché funziona (ora):** La SMT `EventRouter` era configurata con
+`table.field.event.timestamp: created_at`, per usare il timestamp
+applicativo dell'evento. Ma con `time.precision.mode:
+adaptive_time_microseconds` (già in uso dal bug #2 di Fase 0), una colonna
+`TIMESTAMPTZ` come `created_at` arriva a Debezium come stringa ISO-8601, non
+come `INT64` — l'unico tipo che quel campo dell'EventRouter accetta.
+Rimuovere quella riga di config (l'EventRouter ricade sul proprio default,
+il `ts_ms` dell'envelope CDC, sempre `INT64`) ha risolto — e al riavvio il
+task ha ripreso esattamente dalla riga che l'aveva fatto crashare, senza
+perderla: la posizione dello slot di replica avanza solo dopo una
+produzione Kafka riuscita, mai avvenuta per quel record.
+
+**Domanda da colloquio collegata:** "Come fai a sapere se un connector Kafka
+Connect sta funzionando davvero?" — con un incidente vero alle spalle:
+`connector.state` da solo non basta, dice solo che la configurazione è
+stata accettata; il task sottostante può essere morto e va controllato a
+parte (`tasks[0].state` + `trace`), perché un'eccezione in una SMT può
+uccidere l'intero task senza che il livello sopra lo segnali.
+
+Nella stessa sessione, un secondo problema più sottile trovato ispezionando
+Bronze dopo il fix: `REPLICA IDENTITY DEFAULT` (l'impostazione di default di
+Postgres) lascia `before` completamente `null` su ogni UPDATE, perché il WAL
+logga solo la PK della riga precedente. Dettaglio e fix in
+[ADR 005](adr/005-replica-identity-full.md).
+
+---
+
 ## 2026-08-26 — Repository git dentro OneDrive: timeout che sembravano bug
 
 **Non funzionava:** `git filter-repo` per bonificare la history (email

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Registra (o aggiorna) il connector Debezium per public.orders.
+# Registra (o aggiorna) il connector Debezium per l'intero schema `ecommerce`
+# (orders, users, order_items, outbox_events — vedi ROADMAP.md, Fase 1).
 #
 # PUT su /connectors/<name>/config invece di POST su /connectors: idempotente,
 # puoi rilanciarlo quante volte vuoi. Il vecchio debizium_api.bash usava POST,
@@ -7,12 +8,24 @@
 # — un dettaglio che sembra irrilevante finché non serve aggiornare un
 # parametro del connector già in esecuzione, il caso più comune in pratica.
 #
+# NOTA per chi ha già un ambiente da prima della Fase 1, due cose:
+# 1. Il connector si chiama ora `ecommerce-connector` (prima `orders-connector`):
+#    un PUT con nome nuovo REGISTRA un secondo connector, non sostituisce il
+#    vecchio — che resta attivo e conteso sullo stesso `slot.name`.
+# 2. `publication.name` non cambia (resta `debezium_orders_publication`), e
+#    con `publication.autocreate.mode=filtered` Debezium NON altera da solo
+#    una publication che esiste già — se è stata creata quando
+#    `table.include.list` copriva solo `public.orders`, questo PUT da solo
+#    non basta a far arrivare users/order_items/outbox_events.
+# In entrambi i casi la via pulita è `docker compose down -v` (stesso reset
+# già richiesto in Fase 0.1) prima di ri-registrare.
+#
 # Uso: bash scripts/register-debezium-connector.sh
 set -euo pipefail
 
 DEBEZIUM_URL="${DEBEZIUM_URL:-http://localhost:8083}"
-CONNECTOR_NAME="orders-connector"
-CONFIG_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/debezium/connectors/orders.json"
+CONNECTOR_NAME="ecommerce-connector"
+CONFIG_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/debezium/connectors/ecommerce.json"
 
 echo "→ Registro/aggiorno $CONNECTOR_NAME su $DEBEZIUM_URL..."
 

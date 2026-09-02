@@ -25,7 +25,7 @@ log() { echo "→ $*" >&2; }
 
 # --- 1. Admin: login (seedato da DataInitializer, richiede il profilo "local") ---
 log "Login admin..."
-admin_login_response=$(curl -sf -X POST "$BASE_URL/auth/login" \
+admin_login_response=$(curl -s -X POST "$BASE_URL/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@admin.com","password":"admin123"}')
 ADMIN_TOKEN=$(echo "$admin_login_response" | jq -r '.token')
@@ -38,7 +38,7 @@ fi
 
 # --- 2. Admin: crea un prodotto ---
 log "Creo un prodotto..."
-product_response=$(curl -sf -X POST "$BASE_URL/products" \
+product_response=$(curl -s -X POST "$BASE_URL/products" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -d "{\"name\":\"E2E test product\",\"description\":\"Creato dal job e2e-test\",\"basePrice\":9.99,\"sku\":\"E2E-${RUN_ID}\"}")
@@ -65,7 +65,7 @@ curl -sf -X POST "$BASE_URL/auth/register" \
   -d "{\"email\":\"$CUSTOMER_EMAIL\",\"password\":\"$CUSTOMER_PASSWORD\"}" \
   > /dev/null
 
-customer_login_response=$(curl -sf -X POST "$BASE_URL/auth/login" \
+customer_login_response=$(curl -s -X POST "$BASE_URL/auth/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$CUSTOMER_EMAIL\",\"password\":\"$CUSTOMER_PASSWORD\"}")
 CUSTOMER_TOKEN=$(echo "$customer_login_response" | jq -r '.token')
@@ -78,7 +78,7 @@ fi
 
 # --- 5. Customer: crea l'ordine — questo è l'evento che deve arrivare in Bronze ---
 log "Creo l'ordine..."
-order_response=$(curl -sf -X POST "$BASE_URL/orders" \
+order_response=$(curl -s -X POST "$BASE_URL/orders" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" \
   -d "{\"customerEmail\":\"$CUSTOMER_EMAIL\",\"items\":[{\"productId\":\"$PRODUCT_ID\",\"quantity\":2}],\"notes\":\"e2e-test\"}")
