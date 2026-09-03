@@ -70,7 +70,7 @@ flowchart TD
 | Componente | Tecnologia | Perché |
 |---|---|---|
 | DB sorgente | PostgreSQL 16 | `wal_level=logical` abilita il CDC nativo via replication slot |
-| CDC | Debezium 2.5 | Cattura delle modifiche direttamente dal WAL, senza latenza — nessun polling, nessun carico sul DB |
+| CDC | Debezium 2.5 | Cattura le modifiche direttamente dal WAL: nessun polling delle tabelle, nessuna query sulla sorgente |
 | Message broker | Kafka 7.8 (KRaft) | Elimina la dipendenza da ZooKeeper; è lo standard da Kafka 3.x |
 | Stream processing | Spark 4.0 + Structured Streaming | Micro-batch con semantica exactly-once tramite i checkpoint Delta |
 | Storage | Delta Lake 4.0 su MinIO | Transazioni ACID, time travel, schema evolution — S3-compatible in locale |
@@ -84,7 +84,12 @@ flowchart TD
 Un ETL tradizionale interroga il database sorgente a intervalli, introducendo
 latenza e carico sul DB. Debezium legge direttamente il Write-Ahead Log di
 PostgreSQL — lo stesso meccanismo usato dalla replica — catturando ogni
-modifica di riga in tempo reale, senza impatto sulla sorgente.
+modifica di riga senza interrogare le tabelle. La latenza non è zero: è la
+somma di flush del WAL, poll del connector, hop Kafka e intervallo del
+micro-batch Spark. Ma è continua invece che legata a un intervallo di
+schedulazione, e il costo sulla sorgente è quello di uno standby in replica,
+non di una query analitica. Il valore end-to-end non è ancora misurato — vedi
+[ROADMAP.md](ROADMAP.md), Fase 7.
 
 **Perché Delta Lake e non Parquet grezzo?**
 Il Parquet grezzo non dà garanzie ACID: un job Spark che fallisce lascia file
