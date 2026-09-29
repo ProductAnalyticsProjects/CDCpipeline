@@ -110,13 +110,24 @@ jobs:
           # che Spark provi a risolvere l'hostname del runner (a volte fallisce).
           SPARK_LOCAL_IP: 127.0.0.1
         # --ignore esclude la cartella tests/integration/ (richiede Kafka/
-        # Postgres reali, gira nel job `integration-test`), MA due test in
-        # test_silver_enrichment.py sono marcati @pytest.mark.integration
-        # pur vivendo fuori da quella cartella (richiedono i JAR Delta reali,
-        # non disponibili con la sola pip install di questo job) — --ignore
-        # da solo non li esclude. -m "not integration" li filtra per marker,
-        # indipendentemente da dove si trovano.
+        # Postgres reali, gira nel job `integration-test`). I test marcati
+        # @pytest.mark.integration che vivono FUORI da quella cartella
+        # (test_silver_bugs.py, test_silver_enrichment.py,
+        # test_silver_open_bugs.py) richiedono i JAR Delta reali: -m "not
+        # integration" li esclude da questo step e girano nello step
+        # successivo.
         run: pytest spark_apps/tests -v --ignore=spark_apps/tests/integration -m "not integration"
+
+      # Test di Silver su Delta vero (MERGE, guardie di ordinamento, bug
+      # aperti marcati xfail). Non servono servizi esterni: la fixture spark
+      # usa configure_spark_with_delta_pip, che scarica il JAR Delta da Maven
+      # al primo avvio. Prima di questo step non giravano in NESSUN job: lo
+      # step sopra li escludeva per marker, `integration-test` guarda solo la
+      # cartella tests/integration/.
+      - name: Run pytest (Silver su Delta reale)
+        env:
+          SPARK_LOCAL_IP: 127.0.0.1
+        run: pytest spark_apps/tests -v -rxX --ignore=spark_apps/tests/integration -m integration
 
   # ── 3. VALIDAZIONE dbt ──────────────────────────────────────────────────────
   # Non facciamo `dbt build` in CI: richiederebbe Trino + Delta Lake + MinIO
@@ -306,6 +317,7 @@ jobs:
   # ── 6. E2E TEST (docker compose up completo) ─────────────────────────────────
   # Criterio di uscita di Fase 0 (ROADMAP.md): `docker compose up` +
   # `POST /api/orders` → riga in Bronze con importi e timestamp non-null.
+  # Esteso poi fino a Silver: la stessa riga deve arrivare anche lì.
   # Diverso da `integration-test`: qui non ci sono service container che
   # simulano pezzi dello stack, gira lo stack Docker Compose vero e proprio
   # (Debezium, MinIO, backend, Spark bronze/silver) — il job più lento e
@@ -359,24 +371,27 @@ jobs:
       - name: Registra il connector Debezium
         run: bash scripts/register-debezium-connector.sh
 
-      - name: Avvia gli stream Spark bronze e silver (detached, sono continui)
+      # Bronze prima, Silver dopo: Silver legge Bronze con readStream, e se il
+      # path Delta non esiste ancora (nessun batch scritto) muore all'avvio.
+      # Prima i due stream partivano insieme e il check "attivi sul master"
+      # passava comunque, perché un'app risulta registrata appena crea la
+      # SparkSession, prima di leggere qualsiasi cosa: un Silver morto subito
+      # dopo non veniva mai notato, visto che la verifica si fermava a Bronze.
+      - name: Avvia lo stream Spark bronze (detached, è continuo)
         run: |
           docker compose exec -d spark-master sh -c \
             "/opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/apps/cdc_bronze.py > /opt/spark/work-dir/bronze.log 2>&1"
-          docker compose exec -d spark-master sh -c \
-            "/opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/apps/cdc_silver.py > /opt/spark/work-dir/silver.log 2>&1"
 
-      - name: Attendi che gli stream compaiano attivi sullo Spark master
+      - name: Attendi che lo stream bronze compaia attivo sullo Spark master
         # Stessa API REST usata da check_streaming_alive in dags/cdc_batch_pipeline.py.
         run: |
           for i in $(seq 1 30); do
             apps=$(curl -sf http://localhost:8081/json/ | jq -r '.activeapps[].name' 2>/dev/null || true)
-            echo "$apps" | grep -q "CDC_bronze" && echo "$apps" | grep -q "CDC_silver" && exit 0
+            echo "$apps" | grep -q "CDC_bronze" && exit 0
             sleep 3
           done
-          echo "::error::CDC_bronze/CDC_silver non risultano attivi sullo Spark master"
+          echo "::error::CDC_bronze non risulta attivo sullo Spark master"
           docker compose exec -T spark-master cat /opt/spark/work-dir/bronze.log || true
-          docker compose exec -T spark-master cat /opt/spark/work-dir/silver.log || true
           exit 1
 
       - name: Genera un ordine reale via API
@@ -397,6 +412,25 @@ jobs:
             sleep 5
           done
           echo "::error::La riga non è mai arrivata in Bronze senza campi null"
+          docker compose exec -T spark-master cat /opt/spark/work-dir/bronze.log || true
+          exit 1
+
+      - name: Avvia lo stream Spark silver (detached, è continuo)
+        run: |
+          docker compose exec -d spark-master sh -c \
+            "/opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/apps/cdc_silver.py > /opt/spark/work-dir/silver.log 2>&1"
+
+      - name: "Verifica la riga in Silver (con retry: la scrittura è asincrona)"
+        run: |
+          docker compose cp scripts/e2e/check_silver_row.py spark-master:/tmp/check_silver_row.py
+          for i in $(seq 1 24); do
+            if docker compose exec -T spark-master python3 /tmp/check_silver_row.py --email "${{ steps.order.outputs.customer_email }}"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::La riga non è mai arrivata in Silver"
+          docker compose exec -T spark-master cat /opt/spark/work-dir/silver.log || true
           exit 1
 
       - name: Log dei servizi (sempre, utile in caso di fallimento)

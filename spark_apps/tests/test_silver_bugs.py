@@ -20,8 +20,6 @@
 
 import pytest
 import tempfile
-from delta import configure_spark_with_delta_pip
-from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     StringType,
     StructField,
@@ -44,25 +42,10 @@ def read_last_row(spark, tmp, only_last=True):
 
 
 @pytest.fixture(scope="session")
-def spark():
-    # A differenza della fixture "spark" di test_silver_enrichment.py, qui serve
-    # il JAR Delta vero (process_batch scrive/fa MERGE su Delta): in Docker
-    # arriva pre-installato (dockerfile:5), in locale configure_spark_with_delta_pip
-    # lo scarica da Maven al primo avvio (richiede internet).
-    # extensions/catalog: senza questi due, .write.format("delta") funziona ma
-    # il MERGE no (serve l'estensione SQL registrata) — stessi due config di
-    # create_spark_session() in cdc_silver.py:16-20, ma vanno messi PRIMA di
-    # configure_spark_with_delta_pip, che da solo aggiunge solo il jar.
-    builder = (
-        SparkSession.builder.master("local[*]")
-        .appName("test_silver_bugs")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        )
-    )
-    return configure_spark_with_delta_pip(builder).getOrCreate()
+def spark(spark_delta):
+    # La sessione con Delta vero vive in conftest.py (spark_delta), condivisa
+    # con test_silver_enrichment.py e test_silver_open_bugs.py.
+    return spark_delta
 
 
 @pytest.fixture

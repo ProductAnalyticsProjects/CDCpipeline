@@ -5,15 +5,16 @@ accendere l'intero stack, più orchestrazione Airflow del layer gold e
 branch protection su `main`. Per lo stato del flusso git (PR, branch
 protection, gate pre-commit, versionamento) vedi [git-workflow.md](git-workflow.md).
 
-## Cosa fa `ci.yml` (6 job)
+## Cosa fa `ci.yml` (7 job, più `changes` che decide se serve l'e2e)
 
 | Job | Cosa verifica | Perché così |
 |-----|---------------|-------------|
 | **lint** | ruff + ruff-format + gitleaks + hadolint + shellcheck + sqlfluff via pre-commit | Riusa `.pre-commit-config.yaml`: un'unica fonte di verità tra locale e CI. |
-| **test** | `pytest spark_apps/tests` (unit) | Trasformazioni silver su DataFrame in memoria. Esclude `tests/integration/`. |
+| **test** | `pytest spark_apps/tests`, in due step | Step 1: test unitari su DataFrame in memoria (`-m "not integration"`). Step 2: test di Silver su Delta reale (`-m integration`: MERGE, guardie di ordinamento, bug aperti marcati `xfail`), con il JAR Delta scaricato da `configure_spark_with_delta_pip`. Entrambi escludono `tests/integration/`. |
 | **dbt-validate** | `dbt parse` | Valida SQL e `ref()`/`source()` senza connettersi a Trino. |
 | **compose-validate** | `docker compose config` + check versioni | Sintassi compose e coerenza Scala/Spark/Delta (4.0.0/2.13). |
 | **integration-test** | Postgres + Kafka **veri** (service container) | Vedi sotto. |
+| **e2e-test** | Stack Docker Compose completo | Ordine reale via API → riga verificata in Bronze, poi in Silver. Silver parte dopo che Bronze ha scritto: legge Bronze in streaming e muore se il path Delta non esiste ancora. Saltato sui cambi solo-documentazione. |
 | **dag-integrity** | `DagBag` sui DAG Airflow | Import puliti, niente cicli, `owner`/`retries`/`catchup` impostati esplicitamente. |
 
 `lint`, `test`, `dbt-validate`, `compose-validate` girano in parallelo, senza dipendenze fra loro.

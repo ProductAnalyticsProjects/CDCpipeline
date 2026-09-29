@@ -91,13 +91,38 @@ def test_ordine_senza_items_ha_items_count_null(upserts_df, user_df, item_df):
 
 
 # ── integration test: process_batch con Delta ─────────────────────────────────
-# Richiedono i JAR Delta — disponibili nell'immagine Docker, non in locale
+# Richiedono i JAR Delta (fixture spark_delta in conftest.py): girano nello
+# step CI "Silver su Delta reale", non in quello unitario.
+#
+# Dati con updated_at/version: dalla guardia di ordinamento (ADR 002/003) la
+# MERGE confronta quelle colonne, e le righe senza facevano fallire la delete
+# con un errore di analisi (colonna inesistente) invece di testarla.
+BATCH_SCHEMA = StructType(
+    [
+        StructField("id", StringType(), True),
+        StructField("customer_email", StringType(), True),
+        StructField("status", StringType(), True),
+        StructField("total_amount", DoubleType(), True),
+        StructField("updated_at", LongType(), True),
+        StructField("version", LongType(), True),
+        StructField("cdc_op", StringType(), True),
+    ]
+)
+
+
 @pytest.mark.integration
-def test_process_batch_insert(spark, upserts_df, user_df, item_df):
+def test_process_batch_insert(spark_delta, user_df, item_df):
+    upserts = spark_delta.createDataFrame(
+        [
+            ("uuid-order-1", "mario@gmail.com", "PENDING", 100.0, 1, 1, "c"),
+            ("uuid-order-2", "senza@utente.com", "PENDING", 50.0, 1, 1, "u"),
+        ],
+        BATCH_SCHEMA,
+    )
     with tempfile.TemporaryDirectory() as tmp:
-        process_batch = make_process_batch(spark, user_df, item_df, tmp)
-        process_batch(upserts_df, batch_id=0)
-        result = spark.read.format("delta").load(f"{tmp}/silver/orders")
+        process_batch = make_process_batch(spark_delta, user_df, item_df, tmp)
+        process_batch(upserts, batch_id=0)
+        result = spark_delta.read.format("delta").load(f"{tmp}/silver/orders")
         assert result.count() == 2
         assert (
             result.filter(col("id") == "uuid-order-1").first()["user_email"]
@@ -106,25 +131,25 @@ def test_process_batch_insert(spark, upserts_df, user_df, item_df):
 
 
 @pytest.mark.integration
-def test_process_batch_delete(spark, upserts_df, user_df, item_df):
+def test_process_batch_delete(spark_delta, user_df, item_df):
+    upserts = spark_delta.createDataFrame(
+        [
+            ("uuid-order-1", "mario@gmail.com", "PENDING", 100.0, 1, 1, "c"),
+            ("uuid-order-2", "senza@utente.com", "PENDING", 50.0, 1, 1, "u"),
+        ],
+        BATCH_SCHEMA,
+    )
+    # Delete più recente dello stato in Silver (updated_at/version più alti):
+    # la guardia deve lasciarla passare.
+    deletes = spark_delta.createDataFrame(
+        [("uuid-order-1", "mario@gmail.com", "PENDING", 100.0, 2, 2, "d")],
+        BATCH_SCHEMA,
+    )
     with tempfile.TemporaryDirectory() as tmp:
-        process_batch = make_process_batch(spark, user_df, item_df, tmp)
-        process_batch(upserts_df, batch_id=0)
+        process_batch = make_process_batch(spark_delta, user_df, item_df, tmp)
+        process_batch(upserts, batch_id=0)
+        process_batch(deletes, batch_id=1)
 
-        delete_schema = StructType(
-            [
-                StructField("id", StringType(), True),
-                StructField("customer_email", StringType(), True),
-                StructField("status", StringType(), True),
-                StructField("total_amount", DoubleType(), True),
-                StructField("cdc_op", StringType(), True),
-            ]
-        )
-        deletes_df = spark.createDataFrame(
-            [("uuid-order-1", "mario@gmail.com", "PENDING", 100.0, "d")], delete_schema
-        )
-        process_batch(deletes_df, batch_id=1)
-
-        result = spark.read.format("delta").load(f"{tmp}/silver/orders")
+        result = spark_delta.read.format("delta").load(f"{tmp}/silver/orders")
         assert result.count() == 1
         assert result.filter(col("id") == "uuid-order-1").count() == 0
