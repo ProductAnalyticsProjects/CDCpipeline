@@ -64,8 +64,10 @@ Quello che Airflow orchestra è la parte **batch** a valle, in due DAG:
 
 - **`cdc_batch_pipeline`** (`@hourly`): `check_streaming_alive` (interroga la
   REST API dello Spark Master, fallisce fail-fast se bronze/silver non
-  risultano attivi) → `dbt_build_gold` (`docker compose run --rm dbt dbt build`)
-  → `great_expectations_validate` (`docker compose run --rm great-expectations`).
+  risultano attivi) → `dbt_run_gold` (`docker compose run --rm dbt dbt run`) →
+  `dbt_test_gold` (`dbt test`, task separato di proposito: così il nome del
+  task fallito distingue una build rotta da un contratto sui dati violato) →
+  `great_expectations_validate` (`docker compose run --rm great-expectations`).
 - **`cdc_maintenance`** (`@weekly`): `delta_vacuum`, via `docker exec spark-master`
   (coerente con `spark_apps/spark_bronze.bash`, che usa lo stesso pattern —
   qui è corretto perché spark-master è già un servizio long-running, a

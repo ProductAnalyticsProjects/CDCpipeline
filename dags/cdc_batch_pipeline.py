@@ -16,7 +16,7 @@ Per questo il DAG non fa spark-submit dei job di streaming: verifica solo,
 via la REST API dello Spark Master, che siano vivi, e orchestra la parte
 BATCH a valle (che invece è corretto far girare a intervalli):
 
-  check_streaming_alive → dbt_build_gold → great_expectations_validate
+  check_streaming_alive → dbt_run_gold → dbt_test_gold → great_expectations_validate
 
 Se lo streaming non risulta attivo, il DAG fallisce subito (fail-fast):
 non ha senso far girare dbt su dati che non vengono più aggiornati.
@@ -79,11 +79,32 @@ with DAG(
     # avviato. `run` crea un container usa-e-getta con la stessa immagine/
     # comando/rete definiti nel compose, senza dipendere da uno stato
     # pregresso — più adatto a un task pianificato e idempotente.
-    dbt_build_gold = BashOperator(
-        task_id="dbt_build_gold",
+    # `dbt build` esegue run e test interlacciati per modello e fallisce in
+    # modo indistinguibile nei due casi: un errore di compilazione SQL e un
+    # test rosso producono lo stesso task fallito, e per sapere quale dei due
+    # è stato bisogna aprire i log. Separandoli, il nome del task fallito è
+    # già la diagnosi: `dbt_run_gold` rosso = la build è rotta,
+    # `dbt_test_gold` rosso = la build è passata ma i dati non rispettano i
+    # contratti.
+    #
+    # Il prezzo di questa scelta: `build` ferma i modelli a valle di un test
+    # fallito, mentre run-poi-test costruisce tutto e verifica dopo. Oggi il
+    # layer gold è piatto — tre modelli senza dipendenze tra loro — quindi la
+    # differenza è nulla. Se in futuro un modello gold leggerà da un altro,
+    # questo va riconsiderato.
+    dbt_run_gold = BashOperator(
+        task_id="dbt_run_gold",
         bash_command=(
             "docker compose -f docker-compose.yaml -f docker-compose.airflow.yml "
-            "run --rm dbt dbt build --profiles-dir /usr/app"
+            "run --rm dbt dbt run --profiles-dir /usr/app"
+        ),
+    )
+
+    dbt_test_gold = BashOperator(
+        task_id="dbt_test_gold",
+        bash_command=(
+            "docker compose -f docker-compose.yaml -f docker-compose.airflow.yml "
+            "run --rm dbt dbt test --profiles-dir /usr/app"
         ),
     )
 
@@ -97,4 +118,7 @@ with DAG(
         ),
     )
 
-    check_streaming >> dbt_build_gold >> ge_validate
+    # Un test dbt rosso ferma Great Expectations di proposito: non ha senso
+    # validare a valle dei dati che hanno già fallito i propri contratti a
+    # monte — produrrebbe un secondo fallimento che è solo un'eco del primo.
+    check_streaming >> dbt_run_gold >> dbt_test_gold >> ge_validate

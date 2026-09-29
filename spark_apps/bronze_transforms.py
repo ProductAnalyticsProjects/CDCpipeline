@@ -23,6 +23,12 @@ from pyspark.sql.types import (
 logger = logging.getLogger(__name__)
 
 
+# Con `decimal.handling.mode: precise` Debezium non manda il DECIMAL come
+# stringa/numero, ma come i byte grezzi (big-endian, signed) dell'intero non
+# scalato, incapsulati in base64 (encoding standard Kafka Connect per
+# org.apache.kafka.connect.data.Decimal) — es. 199.99 con scale=4 diventa
+# l'intero 1999900 in byte, poi base64. Va decodificato a mano: Spark non sa
+# interpretare quei byte da solo. Usata come UDF in build_bronze_df.
 def convert_base_to_decimal(column, scale=4):
     try:
         if column is not None:
