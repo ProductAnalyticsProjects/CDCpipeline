@@ -1,7 +1,7 @@
 """
 DAG: cdc_maintenance
 
-Delta VACUUM (spark_apps/maintenence/vacuum.py) rimuove i file non più
+Delta VACUUM (spark_apps/maintenance/vacuum.py) rimuove i file non più
 referenziati dal log delle transazioni Delta oltre la retention di default
 (7 giorni). Va fatto girare periodicamente ma NON ad ogni ora come la
 pipeline batch: è un'operazione più pesante e non urgente — una volta a
@@ -23,7 +23,7 @@ default_args = {
 
 with DAG(
     dag_id="cdc_maintenance",
-    description="Delta Lake VACUUM settimanale su bronze/silver/gold",
+    description="Delta Lake VACUUM settimanale sulle tabelle Bronze e Silver",
     default_args=default_args,
     schedule="@weekly",
     start_date=datetime(2026, 1, 1),
@@ -40,6 +40,6 @@ with DAG(
         bash_command=(
             "docker exec spark-master /opt/spark/bin/spark-submit "
             "--master spark://spark-master:7077 "
-            "/opt/spark/apps/maintenence/vacuum.py"
+            "/opt/spark/apps/maintenance/vacuum.py"
         ),
     )
