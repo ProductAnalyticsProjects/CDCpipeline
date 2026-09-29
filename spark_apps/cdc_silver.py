@@ -85,7 +85,12 @@ def main():
     BUCKET = "lakehouse"
     CHECKPOINT_BUCKET = "spark-checkpoints"
 
-    POSTGRES_URL = "jdbc:postgresql://postgres:5432/inventory"
+    # Stesso DB del backend e del connector Debezium (Fase 0.1: DB unico
+    # `ecommerce`). Letto dall'ambiente invece che hardcoded: il valore
+    # hardcoded era rimasto al vecchio `inventory`, che non esiste più.
+    POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "postgres")
+    POSTGRES_DB = os.environ.get("POSTGRES_DB", "ecommerce")
+    POSTGRES_URL = f"jdbc:postgresql://{POSTGRES_HOST}:5432/{POSTGRES_DB}"
     POSTGRES_PROPERTIES = {
         "user": os.environ["POSTGRES_USER"],
         "password": os.environ["POSTGRES_PASSWORD"],
@@ -132,8 +137,11 @@ def main():
         )
         query.awaitTermination()
         logger.info("Streaming silver terminato")
-    except Exception as e:
-        logger.error("Errore nello stream verso Silver: %s", str(e))
+    except Exception:
+        # Log e rilancio: inghiottire l'eccezione faceva uscire il processo
+        # con codice 0, come una chiusura normale dello stream.
+        logger.exception("Errore nello stream verso Silver")
+        raise
 
 
 if __name__ == "__main__":

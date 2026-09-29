@@ -121,8 +121,11 @@ def main():
         )
         query.awaitTermination()
         logger.info("Stream terminato")
-    except Exception as e:
-        logger.error("Errore stream %s", str(e))
+    except Exception:
+        # Log e rilancio: inghiottire l'eccezione faceva uscire il processo
+        # con codice 0, come una chiusura normale dello stream.
+        logger.exception("Errore nello stream Bronze per %s", BRONZE_TABLE)
+        raise
 
 
 if __name__ == "__main__":
