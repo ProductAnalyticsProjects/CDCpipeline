@@ -1,4 +1,9 @@
-# ADR 001 — Configurazione del connector Debezium (`debezium/connectors/orders.json`)
+# ADR 001 — Configurazione del connector Debezium (`debezium/connectors/ecommerce.json`)
+
+> Scritto in Fase 0, quando il file si chiamava `orders.json` e copriva solo
+> `public.orders`. Dalla Fase 1 il connector copre quattro tabelle e il file è
+> `ecommerce.json`; le scelte descritte qui valgono invariate. I bug #1-#3
+> citati sotto sono tutti risolti: ogni sezione ha una riga **Stato**.
 
 Il file di config è scritto per essere corretto e produttivo di default,
 ma le scelte dietro ogni riga sono il contenuto vero da saper spiegare in
@@ -34,14 +39,19 @@ CDC nessun beneficio se ti servono solo `orders`.
 
 ## `heartbeat.interval.ms: 10000`
 
-**Il più importante di questa lista.** Senza heartbeat, se la tabella
-sorgente resta inattiva per un periodo prolungato, il replication slot non
-avanza mai il suo `confirmed_flush_lsn` — e Postgres non può riciclare i
-segmenti WAL più vecchi di quel punto, perché "potrebbero ancora servire al
-consumer collegato allo slot". Il WAL cresce senza limite finché il disco
-non si riempie. È l'incidente da manuale per chi opera CDC in produzione, e
-qui lo previene un solo parametro: l'heartbeat manda un messaggio periodico
-anche senza modifiche reali, che fa avanzare comunque il flush del WAL.
+**Il più importante di questa lista.** Il caso pericoloso non è un
+database del tutto inattivo, ma **tabelle catturate inattive mentre il resto
+del database continua a scrivere**: il WAL cresce per le altre tabelle, ma il
+connector non riceve nessun evento e quindi non conferma mai un
+`confirmed_flush_lsn` più recente. Postgres non può riciclare i segmenti WAL
+più vecchi di quel punto, perché "potrebbero ancora servire al consumer
+collegato allo slot", e il WAL cresce finché il disco non si riempie. È
+l'incidente da manuale per chi opera CDC in produzione. L'heartbeat manda un
+messaggio periodico anche senza modifiche sulle tabelle catturate, e fa
+avanzare comunque l'offset confermato. Se non bastasse (per esempio con
+publication filtrate che non vedono mai traffico), la leva successiva è
+`heartbeat.action.query`, che genera una scrittura vera su una tabella
+dedicata inclusa nella publication.
 
 Da monitorare in Fase 7: `SELECT slot_name, confirmed_flush_lsn,
 pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn) AS lag_bytes FROM
@@ -68,6 +78,9 @@ in Spark. È lavoro deliberatamente lasciato alla logica applicativa, non
 alla configurazione — capire questa codifica è esattamente il tipo di
 conoscenza CDC che vale in un colloquio.
 
+**Stato:** risolto in Fase 0 (PR #32) — `convert_base_to_decimal` in
+`spark_apps/bronze_transforms.py` produce la colonna `<nome>_decoded`.
+
 ## `time.precision.mode: adaptive_time_microseconds`
 
 Dichiarato esplicitamente per non dipendere dal default della versione
@@ -75,9 +88,12 @@ installata (già cambiato una volta tra major di Debezium). Per una colonna
 `TIMESTAMPTZ` come `created_at`/`updated_at`, Debezium emette comunque una
 stringa ISO-8601 con offset — questo parametro incide soprattutto su
 `TIME`/`TIMESTAMP WITHOUT TIME ZONE`, non elimina il **bug #2**: lo schema
-di `cdc_bronze.py` dichiara quelle colonne `LongType` aspettandosi epoch
-numerico, quando invece arriva una stringa. Anche questo resta un fix Spark,
+di `cdc_bronze.py` dichiarava quelle colonne `LongType` aspettandosi epoch
+numerico, quando invece arriva una stringa. Anche questo era un fix Spark,
 non di connector.
+
+**Stato:** risolto in Fase 0 (PR #36) — `TimestampType` in Bronze,
+`TIMESTAMP(6)` nello schema Trino, `CAST(created_at AS DATE)` nei modelli Gold.
 
 ## `tombstones.on.delete: true` (il default, dichiarato esplicitamente)
 
@@ -86,11 +102,14 @@ poi un *tombstone* — un messaggio con la stessa chiave e valore `null`. Serve
 alla compaction di Kafka per sapere che quella chiave può essere dimenticata
 definitivamente (vedi `docs/learning/01-kafka-fundamentals.md`, sezione 5).
 
-`cdc_bronze.py` oggi non lo sa: fa `from_json` sul valore senza controllare
-se è null, quindi ogni tombstone diventa una riga interamente null appesa in
-Bronze. **Bug #3**: la fix è filtrare (o gestire esplicitamente) i messaggi
-a valore null prima del parsing — di nuovo, logica applicativa, non
+In Fase 0 `cdc_bronze.py` non lo sapeva: faceva `from_json` sul valore senza
+controllare se fosse null, quindi ogni tombstone diventava una riga
+interamente null appesa in Bronze. **Bug #3**: la fix è filtrare (o gestire
+esplicitamente) i messaggi a valore null — di nuovo, logica applicativa, non
 configurazione del connector.
+
+**Stato:** risolto in Fase 0 (PR #32) — `.na.drop(subset="cdc_op")` in
+`build_bronze_df` scarta la riga tutta-null prodotta dal tombstone.
 
 ## Cosa NON è ancora coperto da questa configurazione
 
@@ -100,4 +119,8 @@ configurazione del connector.
   locale/portfolio, non per produzione (vedi README, sezione Known
   Limitations) — in produzione si userebbe il `FileConfigProvider` di Kafka
   Connect o un secret manager esterno.
-- **CDC su più tabelle** (`users`, `order_items`, `outbox_events`): Fase 1.
+- ~~**CDC su più tabelle**~~: fatto in Fase 1 (PR #41) — `users`,
+  `order_items` e `outbox_events`, quest'ultima instradata con l'EventRouter SMT.
+- **`max_slot_wal_keep_size`** non configurato su Postgres: metterebbe un tetto
+  al WAL trattenuto da uno slot fermo, al prezzo di invalidare lo slot (e
+  dover rifare lo snapshot) quando il tetto viene superato.

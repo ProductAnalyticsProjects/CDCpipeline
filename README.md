@@ -72,7 +72,7 @@ flowchart TD
 | DB sorgente | PostgreSQL 16 | `wal_level=logical` abilita il CDC nativo via replication slot |
 | CDC | Debezium 2.5 | Cattura le modifiche direttamente dal WAL: nessun polling delle tabelle, nessuna query sulla sorgente |
 | Message broker | Kafka 7.8 (KRaft) | Elimina la dipendenza da ZooKeeper; è lo standard da Kafka 3.x |
-| Stream processing | Spark 4.0 + Structured Streaming | Micro-batch con semantica exactly-once tramite i checkpoint Delta |
+| Stream processing | Spark 4.0 + Structured Streaming | Micro-batch con checkpoint: exactly-once da Kafka a Bronze (sink Delta), MERGE idempotente su Silver (`foreachBatch` è at-least-once) |
 | Storage | Delta Lake 4.0 su MinIO | Transazioni ACID, time travel, schema evolution — S3-compatible in locale |
 | Motore di query | Trino 435 | Motore SQL distribuito che fa da ponte tra dbt e Delta Lake su MinIO |
 | Trasformazioni | dbt + dbt-trino | SQL-first, testabile, modelli Gold sotto version control |
@@ -119,7 +119,7 @@ CDCpipeline/
 │   ├── inspect_bronze.py          # Lettura ad hoc della tabella Bronze
 │   ├── spark_bronze.bash          # spark-submit dello stream Bronze
 │   ├── spark_silver.bash          # spark-submit dello stream Silver
-│   ├── maintenence/               # Delta VACUUM (vacuum.py + start_vacuum.bash)
+│   ├── maintenance/               # Delta VACUUM (vacuum.py + start_vacuum.bash)
 │   └── tests/                     # pytest: unit sui transforms + integration Kafka
 │
 ├── dags/                          # Airflow
@@ -138,7 +138,7 @@ CDCpipeline/
 │   └── expectations/              # silver_orders_suite.json · gold_suite.json
 │
 ├── trino/                         # config/node/jvm.properties, init.sql (registrazione tabelle Delta), catalog/delta.properties
-├── debezium/connectors/           # orders.json — config del connector (config-as-code)
+├── debezium/connectors/           # ecommerce.json — config del connector (config-as-code)
 ├── init-db/init.sql               # Creazione idempotente del DB `ecommerce` (wal_level=logical è nel compose)
 ├── prometheus/prometheus.yml      # Target di scrape
 ├── policies/                      # lakehouse_lifecycle.json — lifecycle del bucket MinIO
@@ -210,11 +210,11 @@ docker compose ps              # tutti i servizi devono essere "healthy" o "runn
 bash scripts/register-debezium-connector.sh
 ```
 
-Registra il connector PostgreSQL (config in `debezium/connectors/orders.json`
+Registra il connector PostgreSQL (config in `debezium/connectors/ecommerce.json`
 — per il ragionamento dietro ogni singola impostazione vedi
 [docs/adr/001-debezium-connector-config.md](docs/adr/001-debezium-connector-config.md)),
-che inizia immediatamente a catturare le modifiche della tabella
-`public.orders`. Lo script è idempotente: si può rieseguire senza problemi
+che inizia immediatamente a catturare le modifiche delle tabelle
+`orders`, `users`, `order_items` e `outbox_events`. Lo script è idempotente: si può rieseguire senza problemi
 dopo aver cambiato la config.
 
 **4. Avvia gli stream Spark**
@@ -298,6 +298,7 @@ codice, non montati a mano a colpi di click.
 - **Un solo Spark worker**: vincolo di risorse dell'ambiente locale. In produzione il pool di worker scalerebbe orizzontalmente.
 - **Airflow è uno stack separato**: `docker-compose.airflow.yml` va avviato a parte e orchestra solo il batch (dbt + GE + VACUUM); gli stream Spark restano processi di lungo periodo avviati a mano.
 - **Gestione dei secret**: le credenziali stanno in un file `.env`. Un deploy in produzione dovrebbe usare Docker Secrets, Vault o un KMS cloud.
+- **Bug aperti su Silver**, riprodotti da test marcati `xfail` in [spark_apps/tests/test_silver_open_bugs.py](spark_apps/tests/test_silver_open_bugs.py): l'importo in Silver è ancora la stringa base64 di Debezium (quindi Trino, Gold e la suite GE leggono la colonna sbagliata), il primo micro-batch viene scritto senza MERGE, e gli eventi di snapshot (`op = "r"`) non arrivano in Silver.
 
 ---
 
